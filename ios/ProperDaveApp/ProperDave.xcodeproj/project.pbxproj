@@ -1,0 +1,428 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BB0000000000000000000011 /* ProperDaveCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000021 /* ProperDaveCore */; };
+		BB0000000000000000000012 /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000023 /* MWDATCore */; };
+		BB0000000000000000000013 /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000024 /* MWDATCamera */; };
+		BB0000000000000000000014 /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000025 /* MWDATMockDevice */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		BB0000000000000000000054 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				BB0000000000000000000012 /* MWDATCore in Frameworks */,
+				BB0000000000000000000013 /* MWDATCamera in Frameworks */,
+				BB0000000000000000000014 /* MWDATMockDevice in Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		BB0000000000000000000031 /* ProperDave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProperDave.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB0000000000000000000032 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		BB0000000000000000000033 /* ProperDaveUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProperDaveUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BB0000000000000000000055 /* Exceptions for "ProperDave" folder */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BB0000000000000000000071 /* ProperDave */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		BB0000000000000000000041 /* ProperDave */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BB0000000000000000000055 /* Exceptions for "ProperDave" folder */,
+			);
+			path = ProperDave;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		BB0000000000000000000042 /* UITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BB0000000000000000000051 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB0000000000000000000011 /* ProperDaveCore in Frameworks */,
+				BB0000000000000000000012 /* MWDATCore in Frameworks */,
+				BB0000000000000000000013 /* MWDATCamera in Frameworks */,
+				BB0000000000000000000014 /* MWDATMockDevice in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		BB0000000000000000000095 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BB0000000000000000000091 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BB0000000000000000000071;
+			remoteInfo = ProperDave;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXGroup section */
+		BB0000000000000000000061 = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000041 /* ProperDave */,
+				BB0000000000000000000042 /* UITests */,
+				BB0000000000000000000032 /* Secrets.xcconfig */,
+				BB0000000000000000000062 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BB0000000000000000000062 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000031 /* ProperDave.app */,
+				BB0000000000000000000033 /* ProperDaveUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BB0000000000000000000071 /* ProperDave */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BB0000000000000000000081 /* Build configuration list for PBXNativeTarget "ProperDave" */;
+			buildPhases = (
+				BB0000000000000000000052 /* Sources */,
+				BB0000000000000000000051 /* Frameworks */,
+				BB0000000000000000000053 /* Resources */,
+				BB0000000000000000000054 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BB0000000000000000000041 /* ProperDave */,
+			);
+			name = ProperDave;
+			packageProductDependencies = (
+				BB0000000000000000000021 /* ProperDaveCore */,
+				BB0000000000000000000023 /* MWDATCore */,
+				BB0000000000000000000024 /* MWDATCamera */,
+				BB0000000000000000000025 /* MWDATMockDevice */,
+			);
+			productName = ProperDave;
+			productReference = BB0000000000000000000031 /* ProperDave.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BB0000000000000000000072 /* ProperDaveUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BB0000000000000000000083 /* Build configuration list for PBXNativeTarget "ProperDaveUITests" */;
+			buildPhases = (
+				BB0000000000000000000065 /* Sources */,
+				BB0000000000000000000066 /* Frameworks */,
+				BB0000000000000000000067 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BB0000000000000000000096 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BB0000000000000000000042 /* UITests */,
+			);
+			name = ProperDaveUITests;
+			productName = ProperDaveUITests;
+			productReference = BB0000000000000000000033 /* ProperDaveUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		BB0000000000000000000096 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BB0000000000000000000071 /* ProperDave */;
+			targetProxy = BB0000000000000000000095 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXProject section */
+		BB0000000000000000000091 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					BB0000000000000000000071 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					BB0000000000000000000072 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = BB0000000000000000000071;
+					};
+				};
+			};
+			buildConfigurationList = BB0000000000000000000082 /* Build configuration list for PBXProject "ProperDave" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = BB0000000000000000000061;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				BB0000000000000000000022 /* XCLocalSwiftPackageReference "../ProperDaveCore" */,
+				BB0000000000000000000026 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = BB0000000000000000000062 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BB0000000000000000000071 /* ProperDave */,
+				BB0000000000000000000072 /* ProperDaveUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BB0000000000000000000065 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB0000000000000000000066 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB0000000000000000000067 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BB0000000000000000000053 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BB0000000000000000000052 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BB00000000000000000000B1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+			};
+			name = Debug;
+		};
+		BB00000000000000000000B2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+			};
+			name = Release;
+		};
+		BB00000000000000000000C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = BB0000000000000000000032 /* Secrets.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ProperDave/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BB00000000000000000000C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = BB0000000000000000000032 /* Secrets.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ProperDave/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BB00000000000000000000D1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave.UITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ProperDave;
+			};
+			name = Debug;
+		};
+		BB00000000000000000000D2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave.UITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ProperDave;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BB0000000000000000000082 /* Build configuration list for PBXProject "ProperDave" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB00000000000000000000B1 /* Debug */,
+				BB00000000000000000000B2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB0000000000000000000081 /* Build configuration list for PBXNativeTarget "ProperDave" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB00000000000000000000C1 /* Debug */,
+				BB00000000000000000000C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB0000000000000000000083 /* Build configuration list for PBXNativeTarget "ProperDaveUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB00000000000000000000D1 /* Debug */,
+				BB00000000000000000000D2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BB0000000000000000000022 /* XCLocalSwiftPackageReference "../ProperDaveCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../ProperDaveCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		BB0000000000000000000026 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/meta-wearables-dat-ios";
+			requirement = {
+				kind = exactVersion;
+				version = 1.0.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BB0000000000000000000021 /* ProperDaveCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ProperDaveCore;
+		};
+		BB0000000000000000000023 /* MWDATCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000026 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCore;
+		};
+		BB0000000000000000000024 /* MWDATCamera */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000026 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCamera;
+		};
+		BB0000000000000000000025 /* MWDATMockDevice */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000026 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATMockDevice;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BB0000000000000000000091 /* Project object */;
+}

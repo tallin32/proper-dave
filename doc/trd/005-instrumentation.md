@@ -30,7 +30,19 @@ component failed first.
   by explicit user action, never transmitted by default, and no
   analytics may be added under cover of this section.
 
-## 3. Log viewer
+## 3. Working heartbeat (product feature, from field use)
+
+While a watch is live but Dave has nothing to say, the user may want
+proof of life. An optional **synthesized** heartbeat — a soft sine ping
+generated in code at runtime, no audio asset, fully offline — may sound
+at a user-set interval. It is off by default, lives in Advanced
+settings with interval, volume, and pitch controls, and never sounds
+while idle or while the debug log has capture paused. This is a
+product setting, not a debug affordance; generated-audio assets were
+considered and rejected for this cue (loop repetition, licensing,
+tunability).
+
+## 4. Log viewer
 
 - **INS-05** Debug/test builds get a Log tab (filter by component/event,
   inspect one digest's trail) — a plain list is fine — plus shake-to-view
@@ -38,7 +50,7 @@ component failed first.
   same goal in the same session. Release builds compile the viewer, tab,
   and shake handler out entirely.
 
-## 4. Critical-error reporting
+## 5. Critical-error reporting
 
 Fatal or user-actionable failures (camera death, permissions, glasses
 unregistered) deserve more than a silent log line — but a blind debug
@@ -58,7 +70,7 @@ ceremony around each one.
   Automatically *speaking* the modal is a post-hackathon refinement;
   the one exception is INS-09's title, spoken whenever the modal is read.
 
-## 5. Easter egg
+## 6. Easter egg
 
 The codename is a Doctor Who reference (Proper Dave, *Silence in the
 Library*; the earnest-names-for-blind-apps genre is why the project
@@ -77,7 +89,7 @@ only, and production excludes it completely.
   no activation path. This is verifiable against the release binary, and
   shall be verified, not assumed.
 
-## 6. Acceptance
+## 7. Acceptance
 
 Walk a recorded failing session and answer §1's four questions from the
 log alone. Needing the user to re-enact the walk means instrumentation
