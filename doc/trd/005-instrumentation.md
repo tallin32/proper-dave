@@ -50,7 +50,7 @@ tunability).
   same goal in the same session. Release builds compile the viewer, tab,
   and shake handler out entirely.
 
-## 4. Critical-error reporting
+## 5. Critical-error reporting
 
 Fatal or user-actionable failures (camera death, permissions, glasses
 unregistered) deserve more than a silent log line — but a blind debug
@@ -70,7 +70,7 @@ ceremony around each one.
   Automatically *speaking* the modal is a post-hackathon refinement;
   the one exception is INS-09's title, spoken whenever the modal is read.
 
-## 5. Easter egg
+## 6. Easter egg
 
 The codename is a Doctor Who reference (Proper Dave, *Silence in the
 Library*; the earnest-names-for-blind-apps genre is why the project
@@ -89,7 +89,7 @@ only, and production excludes it completely.
   no activation path. This is verifiable against the release binary, and
   shall be verified, not assumed.
 
-## 6. Acceptance
+## 7. Acceptance
 
 Walk a recorded failing session and answer §1's four questions from the
 log alone. Needing the user to re-enact the walk means instrumentation
