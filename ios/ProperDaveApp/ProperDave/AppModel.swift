@@ -147,6 +147,11 @@ final class AppModel: ObservableObject {
         heartbeat.volume = Float(heartbeatVolume)
         heartbeat.frequency = heartbeatPitch
         #if DEBUG
+        heartbeat.onPing = { [weak self] in
+            self?.log.append(component: "speech", event: "heartbeat_ping")
+        }
+        #endif
+        #if DEBUG
         eggWasActive = codename.trimmingCharacters(in: .whitespaces) == "Proper Dave"
         #endif
         session.onCallout = { [weak self] text in self?.speaker.speak(text) }
@@ -157,13 +162,15 @@ final class AppModel: ObservableObject {
         // camera mid-goal instead of failing the goal.
         session.fallbackSource = { CameraDigestSource() }
         refreshGlassesState()
-        stateSink = session.$state.sink { [weak self] _ in self?.applyHeartbeat() }
+        // $state emits the incoming value before the stored property
+        // changes, so the new state must be passed through, not re-read.
+        stateSink = session.$state.sink { [weak self] state in self?.applyHeartbeat(state: state) }
     }
 
     /// Heartbeat sounds only while a watch is live (and never while the
     /// debug log has capture paused).
-    private func applyHeartbeat() {
-        heartbeat.setActive(heartbeatEnabled && session.state == .watching)
+    private func applyHeartbeat(state: SessionController.State? = nil) {
+        heartbeat.setActive(heartbeatEnabled && (state ?? session.state) == .watching)
     }
 
     var cloudClient: any CloudModelClient {

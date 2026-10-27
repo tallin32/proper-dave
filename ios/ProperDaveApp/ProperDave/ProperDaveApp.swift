@@ -41,6 +41,9 @@ struct ProperDaveApp: App {
             }
             .sheet(isPresented: $model.showLogSheet, onDismiss: { model.dismissLogSheet() }) {
                 NavigationStack { LogView() }
+                    .environmentObject(model)
+                    .environmentObject(model.log)
+                    .environmentObject(model.session)
             }
             .alert(model.criticalTitle, isPresented: criticalPresented) {
                 Button("View debug log") { model.viewLogFromCritical() }

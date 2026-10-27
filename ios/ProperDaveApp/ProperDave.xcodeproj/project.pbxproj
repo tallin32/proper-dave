@@ -32,6 +32,7 @@
 /* Begin PBXFileReference section */
 		BB0000000000000000000031 /* ProperDave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProperDave.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB0000000000000000000032 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		BB0000000000000000000033 /* ProperDaveUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ProperDaveUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -55,6 +56,14 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		BB0000000000000000000042 /* UITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		BB0000000000000000000051 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -69,11 +78,22 @@
 		};
 /* End PBXFrameworksBuildPhase section */
 
+/* Begin PBXContainerItemProxy section */
+		BB0000000000000000000095 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BB0000000000000000000091 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BB0000000000000000000071;
+			remoteInfo = ProperDave;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXGroup section */
 		BB0000000000000000000061 = {
 			isa = PBXGroup;
 			children = (
 				BB0000000000000000000041 /* ProperDave */,
+				BB0000000000000000000042 /* UITests */,
 				BB0000000000000000000032 /* Secrets.xcconfig */,
 				BB0000000000000000000062 /* Products */,
 			);
@@ -83,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				BB0000000000000000000031 /* ProperDave.app */,
+				BB0000000000000000000033 /* ProperDaveUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -117,7 +138,36 @@
 			productReference = BB0000000000000000000031 /* ProperDave.app */;
 			productType = "com.apple.product-type.application";
 		};
+		BB0000000000000000000072 /* ProperDaveUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BB0000000000000000000083 /* Build configuration list for PBXNativeTarget "ProperDaveUITests" */;
+			buildPhases = (
+				BB0000000000000000000065 /* Sources */,
+				BB0000000000000000000066 /* Frameworks */,
+				BB0000000000000000000067 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BB0000000000000000000096 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BB0000000000000000000042 /* UITests */,
+			);
+			name = ProperDaveUITests;
+			productName = ProperDaveUITests;
+			productReference = BB0000000000000000000033 /* ProperDaveUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		BB0000000000000000000096 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BB0000000000000000000071 /* ProperDave */;
+			targetProxy = BB0000000000000000000095 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		BB0000000000000000000091 /* Project object */ = {
@@ -129,6 +179,10 @@
 				TargetAttributes = {
 					BB0000000000000000000071 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					BB0000000000000000000072 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = BB0000000000000000000071;
 					};
 				};
 			};
@@ -151,9 +205,34 @@
 			projectRoot = "";
 			targets = (
 				BB0000000000000000000071 /* ProperDave */,
+				BB0000000000000000000072 /* ProperDaveUITests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BB0000000000000000000065 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB0000000000000000000066 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB0000000000000000000067 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		BB0000000000000000000053 /* Resources */ = {
@@ -241,6 +320,38 @@
 			};
 			name = Release;
 		};
+		BB00000000000000000000D1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave.UITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ProperDave;
+			};
+			name = Debug;
+		};
+		BB00000000000000000000D2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave.UITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ProperDave;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -258,6 +369,15 @@
 			buildConfigurations = (
 				BB00000000000000000000C1 /* Debug */,
 				BB00000000000000000000C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB0000000000000000000083 /* Build configuration list for PBXNativeTarget "ProperDaveUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB00000000000000000000D1 /* Debug */,
+				BB00000000000000000000D2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

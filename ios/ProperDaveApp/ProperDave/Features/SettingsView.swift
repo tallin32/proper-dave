@@ -68,14 +68,17 @@ struct SettingsView: View {
                         VStack(alignment: .leading) {
                             Text("Ping every \(model.heartbeatInterval, specifier: "%.0f") s")
                             Slider(value: $model.heartbeatInterval, in: 2...15, step: 1)
+                                .accessibilityLabel("Heartbeat interval")
                         }
                         VStack(alignment: .leading) {
                             Text("Volume")
                             Slider(value: $model.heartbeatVolume, in: 0.05...1, step: 0.05)
+                                .accessibilityLabel("Heartbeat volume")
                         }
                         VStack(alignment: .leading) {
                             Text("Pitch")
                             Slider(value: $model.heartbeatPitch, in: 330...990, step: 10)
+                                .accessibilityLabel("Heartbeat pitch")
                         }
                     }
                 } header: {

@@ -3,6 +3,9 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var model: AppModel
+    // Observed directly: reading session state through AppModel does not
+    // re-render this view when the session changes (nested ObservableObject).
+    @EnvironmentObject private var session: SessionController
     @StateObject private var dictation = Dictation()
 
     private let examples = [
@@ -17,12 +20,12 @@ struct HomeView: View {
             Form {
                 Section("Status") {
                     LabeledContent("State", value: stateText)
-                    LabeledContent("Source", value: model.session.activeSourceID ?? model.sourceKind.rawValue)
+                    LabeledContent("Source", value: session.activeSourceID ?? model.sourceKind.rawValue)
                     LabeledContent("Backend", value: model.backend.rawValue)
                     LabeledContent("Prompt input", value: model.promptInputDescription)
                     LabeledContent("Glasses", value: model.glassesReady ? "Connected" : "Not connected (optional)")
-                    LabeledContent("Escalations", value: "\(model.session.escalationCount)")
-                    if let goal = model.session.goal {
+                    LabeledContent("Escalations", value: "\(session.escalationCount)")
+                    if let goal = session.goal {
                         LabeledContent("Watching for", value: goal.targets.joined(separator: ", "))
                     }
                 }
@@ -54,12 +57,12 @@ struct HomeView: View {
                         }
                     }
                 }
-                if let callout = model.session.lastCallout {
+                if let callout = session.lastCallout {
                     Section("Last callout") { Text(callout).font(.headline) }
                 }
-                if !model.session.decisionTrail.isEmpty {
+                if !session.decisionTrail.isEmpty {
                     Section("Recent decisions") {
-                        ForEach(Array(model.session.decisionTrail.suffix(8).enumerated()), id: \.offset) { _, line in
+                        ForEach(Array(session.decisionTrail.suffix(8).enumerated()), id: \.offset) { _, line in
                             Text(line).font(.footnote.monospaced())
                         }
                     }
@@ -73,7 +76,7 @@ struct HomeView: View {
     }
 
     private var stateText: String {
-        switch model.session.state {
+        switch session.state {
         case .idle: return "Idle"
         case .starting: return "Starting…"
         case .watching: return "Watching"
@@ -84,7 +87,7 @@ struct HomeView: View {
     }
 
     private var isWatching: Bool {
-        switch model.session.state {
+        switch session.state {
         case .watching, .pausedForDebug, .starting: return true
         default: return false
         }

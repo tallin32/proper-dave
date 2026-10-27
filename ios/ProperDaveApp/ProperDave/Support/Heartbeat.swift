@@ -14,6 +14,8 @@ final class HeartbeatPlayer {
     var interval: TimeInterval = 4
     var volume: Float = 0.25
     var frequency: Double = 660
+    /// Debug observability hook (wired to the event log in DEBUG builds).
+    var onPing: (() -> Void)?
 
     init() {
         engine.attach(player)
@@ -68,5 +70,6 @@ final class HeartbeatPlayer {
         }
         player.scheduleBuffer(buffer)
         if !player.isPlaying { player.play() }
+        onPing?()
     }
 }

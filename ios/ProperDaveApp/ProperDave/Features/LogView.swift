@@ -4,14 +4,17 @@ import SwiftUI
 /// Debug log viewer (TRD-005 INS-05): plain filtered list.
 struct LogView: View {
     @EnvironmentObject private var model: AppModel
+    // Observed directly, not through AppModel (nested ObservableObject
+    // changes would otherwise never re-render this list).
+    @EnvironmentObject private var log: EventLog
     @State private var filter = "All"
     @State private var copied = false
 
     private var components: [String] {
-        ["All"] + Array(Set(model.log.events.map(\.component))).sorted()
+        ["All"] + Array(Set(log.events.map(\.component))).sorted()
     }
     private var shown: [LogEvent] {
-        (filter == "All" ? model.log.events : model.log.events.filter { $0.component == filter }).reversed()
+        (filter == "All" ? log.events : log.events.filter { $0.component == filter }).reversed()
     }
 
     var body: some View {
@@ -36,10 +39,10 @@ struct LogView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button(copied ? "Copied" : "Copy JSONL") {
-                    UIPasteboard.general.string = model.log.jsonl()
+                    UIPasteboard.general.string = log.jsonl()
                     copied = true
                 }
-                Button("Clear", role: .destructive) { model.log.clear() }
+                Button("Clear", role: .destructive) { log.clear() }
             }
         }
     }
