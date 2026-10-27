@@ -81,13 +81,31 @@ protocol DigestSource {
   labels. While DAT audio is unwired, opting in falls back to the phone
   mic and the UI says so.
 
-## 6. Motion burst
+## 6. Glasses are optional, and addable at any time (owner requirement)
+
+- **CAP-13** The absence of glasses shall never be a failure condition —
+  not at startup, not at goal start, not mid-goal. Every flow in the app
+  must be fully usable with the phone camera (or the mock source) alone.
+  No goal may be blocked, degraded, or nagged about because glasses are
+  absent, unregistered, or powered off.
+- **CAP-14** The user may connect glasses at any moment — before a goal,
+  while one is running, or after one ends — from a control that is always
+  available, not a first-run setup step. Connecting mid-goal switches the
+  active source without ending the goal, the session, or losing the
+  classifier's window; the switch is logged. Disconnecting mid-goal
+  falls back to the phone camera under CAP-10's rules, and if no camera
+  is available, degrades to silent watching rather than an error.
+
+## 7. Motion burst
 
 Higher-rate capture on sudden scene change is post-MVP unless the
 elevator scenario proves 1 fps too coarse in field testing.
 
-## 7. Tests
+## 8. Tests
 
+Glasses-absence test: a full goal lifecycle with no glasses present at
+any point completes with no error and no prompt about glasses; a
+mid-goal connect/disconnect switches sources without ending the session.
 Schema round-trip against TRD-004 fixtures; scripted mock walk produces
 a stable digest sequence; on-device field run for elevator + street
 signs with CAP-03/CAP-10 behaviour visible in the log.
