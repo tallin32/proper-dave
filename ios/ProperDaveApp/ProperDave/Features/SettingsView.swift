@@ -62,6 +62,28 @@ struct SettingsView: View {
                     }
                 }
 
+                Section {
+                    Toggle("Working heartbeat sound", isOn: $model.heartbeatEnabled)
+                    if model.heartbeatEnabled {
+                        VStack(alignment: .leading) {
+                            Text("Ping every \(model.heartbeatInterval, specifier: "%.0f") s")
+                            Slider(value: $model.heartbeatInterval, in: 2...15, step: 1)
+                        }
+                        VStack(alignment: .leading) {
+                            Text("Volume")
+                            Slider(value: $model.heartbeatVolume, in: 0.05...1, step: 0.05)
+                        }
+                        VStack(alignment: .leading) {
+                            Text("Pitch")
+                            Slider(value: $model.heartbeatPitch, in: 330...990, step: 10)
+                        }
+                    }
+                } header: {
+                    Text("Advanced")
+                } footer: {
+                    Text("A soft synthesized ping while Dave is watching but has nothing to say — proof of life, generated in code, no audio file, works offline. Off by default; it never sounds over a callout screen or while idle. Some will love it, some will want to strangle it: hence the toggle.")
+                }
+
                 #if DEBUG
                 Section {
                     Toggle("Use glasses microphone (experimental)", isOn: $model.glassesMicEnabled)

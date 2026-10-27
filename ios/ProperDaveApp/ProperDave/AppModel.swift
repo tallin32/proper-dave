@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MWDATCore
 import ProperDaveCore
@@ -34,6 +35,8 @@ final class AppModel: ObservableObject {
     let log = EventLog()
     let session: SessionController
     let speaker = Speaker()
+    let heartbeat = HeartbeatPlayer()
+    private var stateSink: AnyCancellable?
 
     @Published var promptText: String { didSet { save(promptText, "promptText") } }
     @Published var backend: Backend { didSet { save(backend.rawValue, "backend") } }
@@ -69,6 +72,24 @@ final class AppModel: ObservableObject {
             }
             eggWasActive = isEasterEggActive
         }
+    }
+
+    // Working heartbeat (synthesized, no asset). Advanced settings.
+    @Published var heartbeatEnabled: Bool {
+        didSet { save(heartbeatEnabled, "heartbeatEnabled"); applyHeartbeat() }
+    }
+    @Published var heartbeatInterval: Double {
+        didSet {
+            save(heartbeatInterval, "heartbeatInterval")
+            heartbeat.interval = heartbeatInterval
+            heartbeat.restartTiming()
+        }
+    }
+    @Published var heartbeatVolume: Double {
+        didSet { save(heartbeatVolume, "heartbeatVolume"); heartbeat.volume = Float(heartbeatVolume) }
+    }
+    @Published var heartbeatPitch: Double {
+        didSet { save(heartbeatPitch, "heartbeatPitch"); heartbeat.frequency = heartbeatPitch }
     }
 
     @Published var criticalError: CriticalError?
@@ -117,7 +138,14 @@ final class AppModel: ObservableObject {
         glassesMicEnabled = d.bool(forKey: "glassesMicEnabled")
         criticalPresentation = CriticalPresentation(rawValue: d.string(forKey: "criticalPresentation") ?? "") ?? .terminalOnly
         codename = d.string(forKey: "codename") ?? ""
+        heartbeatEnabled = d.bool(forKey: "heartbeatEnabled")
+        heartbeatInterval = d.double(forKey: "heartbeatInterval") == 0 ? 4 : d.double(forKey: "heartbeatInterval")
+        heartbeatVolume = d.double(forKey: "heartbeatVolume") == 0 ? 0.25 : d.double(forKey: "heartbeatVolume")
+        heartbeatPitch = d.double(forKey: "heartbeatPitch") == 0 ? 660 : d.double(forKey: "heartbeatPitch")
         session = SessionController(log: log)
+        heartbeat.interval = heartbeatInterval
+        heartbeat.volume = Float(heartbeatVolume)
+        heartbeat.frequency = heartbeatPitch
         #if DEBUG
         eggWasActive = codename.trimmingCharacters(in: .whitespaces) == "Proper Dave"
         #endif
@@ -129,6 +157,13 @@ final class AppModel: ObservableObject {
         // camera mid-goal instead of failing the goal.
         session.fallbackSource = { CameraDigestSource() }
         refreshGlassesState()
+        stateSink = session.$state.sink { [weak self] _ in self?.applyHeartbeat() }
+    }
+
+    /// Heartbeat sounds only while a watch is live (and never while the
+    /// debug log has capture paused).
+    private func applyHeartbeat() {
+        heartbeat.setActive(heartbeatEnabled && session.state == .watching)
     }
 
     var cloudClient: any CloudModelClient {

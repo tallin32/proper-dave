@@ -30,7 +30,19 @@ component failed first.
   by explicit user action, never transmitted by default, and no
   analytics may be added under cover of this section.
 
-## 3. Log viewer
+## 3. Working heartbeat (product feature, from field use)
+
+While a watch is live but Dave has nothing to say, the user may want
+proof of life. An optional **synthesized** heartbeat — a soft sine ping
+generated in code at runtime, no audio asset, fully offline — may sound
+at a user-set interval. It is off by default, lives in Advanced
+settings with interval, volume, and pitch controls, and never sounds
+while idle or while the debug log has capture paused. This is a
+product setting, not a debug affordance; generated-audio assets were
+considered and rejected for this cue (loop repetition, licensing,
+tunability).
+
+## 4. Log viewer
 
 - **INS-05** Debug/test builds get a Log tab (filter by component/event,
   inspect one digest's trail) — a plain list is fine — plus shake-to-view
