@@ -19,7 +19,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Watching")
                 } footer: {
-                    Text("Glasses are optional at all times; the phone camera always works. Meta glasses use the Wearables Device Access Toolkit with Developer Mode on in the Meta AI app.")
+                    Text("Glasses are optional at all times; the phone camera always works. Changing Frame source during a watch switches it immediately, in either direction. Meta glasses use the Wearables Device Access Toolkit with Developer Mode on in the Meta AI app.")
                 }
 
                 Section {

@@ -37,7 +37,18 @@ final class AppModel: ObservableObject {
 
     @Published var promptText: String { didSet { save(promptText, "promptText") } }
     @Published var backend: Backend { didSet { save(backend.rawValue, "backend") } }
-    @Published var sourceKind: FrameSourceKind { didSet { save(sourceKind.rawValue, "sourceKind") } }
+    @Published var sourceKind: FrameSourceKind {
+        didSet {
+            save(sourceKind.rawValue, "sourceKind")
+            // Live toggle: changing the picker mid-watch hot-swaps the
+            // frame source in both directions (CAP-14).
+            guard session.state == .watching || session.state == .pausedForDebug,
+                  session.activeSourceID != nil,
+                  session.activeSourceID != expectedSourceID(for: sourceKind) else { return }
+            log.append(component: "capture", event: "source_picker_changed", detail: sourceKind.rawValue)
+            session.switchSource(to: makeSource(for: sourceKind))
+        }
+    }
     @Published var serverHost: String { didSet { save(serverHost, "serverHost") } }
     @Published var serverPort: Int { didSet { save(serverPort, "serverPort") } }
     @Published var apiKey: String { didSet { save(apiKey, "apiKey") } }
@@ -125,6 +136,14 @@ final class AppModel: ObservableObject {
             : ServerCloudClient(host: serverHost.isEmpty ? "127.0.0.1" : serverHost, port: serverPort, apiKey: apiKey)
     }
 
+    func expectedSourceID(for kind: FrameSourceKind) -> String {
+        switch kind {
+        case .mock: return "mock"
+        case .camera: return "iphone-camera"
+        case .glasses: return "meta-glasses"
+        }
+    }
+
     func makeSource(for kind: FrameSourceKind) -> any DigestSource {
         switch kind {
         case .mock: return MockDigestSource()
@@ -165,13 +184,10 @@ final class AppModel: ObservableObject {
                 glassesStatus = glassesReady ? "Glasses connected."
                     : "Registration not completed. Finish in the Meta AI app (Developer Mode on), then try again."
                 if glassesReady {
-                    if session.state == .watching || session.state == .pausedForDebug {
-                        sourceKind = .glasses
-                        session.switchSource(to: makeSource(for: .glasses))
-                        glassesStatus = "Glasses connected — switched the live watch to them."
-                    } else {
-                        sourceKind = .glasses
-                    }
+                    let live = session.state == .watching || session.state == .pausedForDebug
+                    // Assigning the picker hot-swaps a live watch via its didSet.
+                    sourceKind = .glasses
+                    if live { glassesStatus = "Glasses connected — switched the live watch to them." }
                 }
             } catch {
                 glassesReady = false
