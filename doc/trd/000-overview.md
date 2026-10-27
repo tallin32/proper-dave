@@ -49,6 +49,9 @@ all stages ─▶ structured event log (debug builds)
   notifications. Input is typed text or dictation, user's choice (see §6).
 - **SYS-05** Losing the network or server degrades to silent watching, with
   the user told once per session — not per failure.
+- **SYS-06** Glasses are an enhancement, never a prerequisite, and may be
+  connected at any time, including mid-goal (TRD-001 CAP-13/14). Their
+  absence is not an error state and is never announced as one.
 
 ## 5. Components
 
@@ -88,5 +91,7 @@ implement them.
 ## 9. Open questions for the owner
 
 - **OQ-0.1** Exact model IDs and cost tiers for parsing vs escalation.
+[Answer] Parsing should be done on the lowest cost model that handles the input, ideally a local on-device model. Since this is all about Meta, user should be given the option to download a Muse model capable of parsing and classifying image data.
 - **OQ-0.2** Is one active goal acceptable through field testing, or do
   overlapping watches (elevator + signs) need to arrive earlier?
+[Answer] One active goal for the MVP; if we have time (which we very well may), then having two or three active goals seems reasonable.
