@@ -269,6 +269,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The glasses button must say what it actually does. Registration is
+    /// a one-time Meta AI flow; there is no per-session "reconnect" —
+    /// a live session reconnects itself, and this button's only live
+    /// action is switching a running watch onto the glasses.
+    var glassesActionTitle: String {
+        if !glassesReady { return "Register glasses with Meta AI" }
+        if (session.state == .watching || session.state == .pausedForDebug),
+           session.activeSourceID != "meta-glasses" {
+            return "Switch watch to glasses"
+        }
+        return "Glasses registered"
+    }
+    var glassesActionEnabled: Bool {
+        if !glassesReady { return true }
+        return (session.state == .watching || session.state == .pausedForDebug)
+            && session.activeSourceID != "meta-glasses"
+    }
+
+    /// What the glasses button does, per glassesActionTitle.
+    func glassesAction() {
+        if !glassesReady {
+            connectGlasses()
+        } else if session.state == .watching || session.state == .pausedForDebug {
+            sourceKind = .glasses  // picker didSet hot-swaps the live watch
+            glassesStatus = "Switched the live watch to the glasses."
+        }
+    }
+
     func refreshGlassesState() {
         WearablesBootstrap.configureIfNeeded()
         glassesReady = Wearables.shared.registrationState == .registered

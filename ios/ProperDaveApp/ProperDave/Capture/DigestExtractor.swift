@@ -2,6 +2,7 @@ import CoreMedia
 import CoreVideo
 import Foundation
 import ProperDaveCore
+import UIKit
 import Vision
 
 /// Shared on-device digest extraction (TRD-001), used by phone camera and
@@ -38,6 +39,33 @@ struct DigestExtractor {
         return FrameDigest(sessionID: sessionID, sequence: sequence, sourceID: sourceID,
                            labels: labels, ocrText: ocr,
                            sceneChange: ChangeMetrics(pixelDiff: delta, labelDelta: delta))
+    }
+
+    /// Decoded-image path (DAT hvc1 frames via VideoFrameDecoder, as in
+    /// Meta's sample). Renders the image into a pixel buffer once, at our
+    /// throttled rate, so cost is bounded.
+    mutating func digest(image: UIImage, sessionID: UUID, sequence: Int,
+                         sourceID: String) -> FrameDigest? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width, height = cgImage.height
+        var pixelBuffer: CVPixelBuffer?
+        let attrs: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                                  kCVPixelFormatType_32ARGB, attrs as CFDictionary,
+                                  &pixelBuffer) == kCVReturnSuccess,
+              let buffer = pixelBuffer else { return nil }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue) else { return nil }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return digest(pixelBuffer: buffer, sessionID: sessionID, sequence: sequence, sourceID: sourceID)
     }
 
     mutating func digest(sampleBuffer: CMSampleBuffer, sessionID: UUID, sequence: Int,

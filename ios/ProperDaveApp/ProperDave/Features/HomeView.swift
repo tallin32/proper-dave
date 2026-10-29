@@ -33,11 +33,11 @@ struct HomeView: View {
                     // Always available, at any time (CAP-13/14) — not a
                     // setup step, and never required for anything else here.
                     Button {
-                        model.connectGlasses()
+                        model.glassesAction()
                     } label: {
-                        Label(model.glassesReady ? "Reconnect Meta glasses" : "Connect Meta glasses",
-                              systemImage: "eyeglasses")
+                        Label(model.glassesActionTitle, systemImage: "eyeglasses")
                     }
+                    .disabled(!model.glassesActionEnabled)
                     if let status = model.glassesStatus {
                         Text(status).font(.footnote).foregroundStyle(.secondary)
                     }

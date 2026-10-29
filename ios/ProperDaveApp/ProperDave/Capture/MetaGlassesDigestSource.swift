@@ -32,6 +32,7 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
     private var continuation: AsyncStream<FrameDigest>.Continuation?
     private var startTask: Task<Void, Never>?
     private var extractor = DigestExtractor()
+    private let frameDecoder = HEVCFrameDecoder()
     private var lastEmitted = Date.distantPast
     private var sequence = 0
 
@@ -99,15 +100,26 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
         }
         onEvent?("glasses_session_started", "")
 
+        // What SDK-visible devices exist right now? Zero devices here is
+        // the signature of "registered, but no glasses in range/awake".
+        let devices = wearables.devices.map { id -> String in
+            guard let device = wearables.deviceForIdentifier(id) else { return "\(id) (unresolved)" }
+            return "\(device.nameOrId()) link=\(device.linkState) compat=\(device.compatibility())"
+        }
+        onEvent?("glasses_devices", devices.isEmpty ? "none visible" : devices.joined(separator: "; "))
+
         let cam: MWDATCamera.Camera
         do {
-            guard let created = try session.addCamera(config: StreamConfiguration(videoCodec: .raw, resolution: .low, frameRate: 24)) else {
+            // hvc1 + VideoFrameDecoder, exactly Meta's sample path. (Raw
+            // frames were our divergence; their sampleBuffer route is the
+            // proven one.)
+            guard let created = try session.addCamera(config: StreamConfiguration(videoCodec: .hvc1, resolution: .low, frameRate: 24)) else {
                 fail("The glasses did not provide a camera."); return
             }
             cam = created
         } catch { fail("Could not add the glasses camera: \(error.localizedDescription)"); return }
         camera = cam
-        onEvent?("glasses_camera_added", "codec=raw low 24fps")
+        onEvent?("glasses_camera_added", "codec=hvc1 low 24fps")
 
         cam.stream.statePublisher.listen { [weak self] state in
             guard let self else { return }
@@ -134,13 +146,15 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
             guard now.timeIntervalSince(lastEmitted) >= interval else { return }
             lastEmitted = now
             sequence += 1
-            if let digest = extractor.digest(sampleBuffer: frame.sampleBuffer, sessionID: sessionID,
-                                             sequence: sequence, sourceID: sourceID) {
-                continuation?.yield(digest)
+            // Compressed hvc1 must be decompressed before Vision sees it
+            // (Meta's sample does the equivalent via its own decoder).
+            if let pixelBuffer = frameDecoder.decode(frame.sampleBuffer) {
+                continuation?.yield(extractor.digest(pixelBuffer: pixelBuffer, sessionID: sessionID,
+                                                     sequence: sequence, sourceID: sourceID))
             } else {
                 droppedFrames += 1
                 if droppedFrames == 1 {
-                    onEvent?("glasses_frame_no_pixel_buffer", "sampleBuffer had no image buffer; frames are arriving but cannot be digested in this format")
+                    onEvent?("glasses_frame_undecodable", "frames are arriving but HEVC decoding produced no pixel buffer")
                 }
             }
         }.store(in: tokenBag)

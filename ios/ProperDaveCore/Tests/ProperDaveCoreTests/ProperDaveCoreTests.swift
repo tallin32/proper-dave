@@ -63,6 +63,48 @@ final class ProperDaveCoreTests: XCTestCase {
         XCTAssertTrue(errors.isEmpty, "errors: \(errors)")
     }
 
+    /// Regression: switching sources must stop the old producer, and a
+    /// superseded consume loop must not keep eating its frames (this was
+    /// the "everything still comes from the camera after switching to
+    /// glasses" bug).
+    final class SpySource: DigestSource, @unchecked Sendable {
+        let sourceID: String
+        private(set) var stopped = false
+        private var task: Task<Void, Never>?
+        init(id: String) { sourceID = id }
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                task = Task {
+                    var seq = 0
+                    while !Task.isCancelled {
+                        seq += 1
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: seq, sourceID: sourceID,
+                            ocrText: [OCRSpan(text: "Concourse B")],
+                            sceneChange: ChangeMetrics(pixelDiff: 0.05)))
+                        try? await Task.sleep(for: .milliseconds(20))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() { stopped = true; task?.cancel() }
+    }
+
+    @MainActor
+    func testSwitchStopsOldSource() async throws {
+        let session = SessionController(log: EventLog())
+        let first = SpySource(id: "first-source")
+        session.start(goalText: "Tell me when I reach gate B62",
+                      client: DemoCloudClient(), source: first, interval: 0.02, cooldown: 0.05)
+        try await Task.sleep(for: .seconds(0.4))
+        XCTAssertFalse(first.stopped)
+        session.switchSource(to: SpySource(id: "second-source"))
+        try await Task.sleep(for: .seconds(0.2))
+        session.stop()
+        XCTAssertTrue(first.stopped, "switchSource must stop the previous source")
+    }
+
     @MainActor
     func testMidGoalSourceSwitchKeepsSession() async throws {
         // CAP-14: switching sources mid-goal keeps the same goal/session

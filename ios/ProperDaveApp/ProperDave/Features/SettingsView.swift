@@ -24,11 +24,11 @@ struct SettingsView: View {
 
                 Section {
                     Button {
-                        model.connectGlasses()
+                        model.glassesAction()
                     } label: {
-                        Label(model.glassesReady ? "Reconnect Meta glasses" : "Connect Meta glasses",
-                              systemImage: "eyeglasses")
+                        Label(model.glassesActionTitle, systemImage: "eyeglasses")
                     }
+                    .disabled(!model.glassesActionEnabled)
                     LabeledContent("Status", value: model.glassesReady ? "Connected" : "Not connected")
                     if model.glassesReady {
                         Button("Unregister glasses (demo reset)", role: .destructive) {
