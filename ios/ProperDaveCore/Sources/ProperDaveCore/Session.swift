@@ -4,8 +4,16 @@ import Foundation
 /// physical camera — or none — sits behind a source.
 public protocol DigestSource: Sendable {
     var sourceID: String { get }
+    /// Specific, user-actionable failure detail when the source has one
+    /// (e.g. "the app on your glasses needs an update"), so a terminal
+    /// failure can say that instead of a generic stopped message.
+    var failureDetail: String? { get }
     func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest>
     func stop()
+}
+
+public extension DigestSource {
+    var failureDetail: String? { nil }
 }
 
 /// Scripted concourse walk for demos/tests. No camera, no glasses.
@@ -187,8 +195,11 @@ public final class SessionController: ObservableObject {
         }
         activeSourceID = nil
         state = .failed("Frame source stopped.")
+        // Surface the source's own actionable message when it has one;
+        // a generic stopped notice would bury the actual instruction.
         onCriticalError?("Frame source stopped",
-                         "The camera or glasses stopped sending frames. Check the source is on and nearby; for glasses, that they are registered and Developer Mode is on.")
+                         source.failureDetail
+                            ?? "The camera or glasses stopped sending frames. Check the source is on and nearby; for glasses, that they are registered and Developer Mode is on.")
     }
 
     public func pauseForDebugLog() {
