@@ -36,6 +36,28 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
     private var lastEmitted = Date.distantPast
     private var sequence = 0
 
+    /// Session creation with the selector race worked around: specific
+    /// device when one is visible, up to 5 attempts a second apart while
+    /// the selector/device list populates. This is session *establish-
+    /// ment* timing only — it never retries a stream that has started.
+    private func createSessionWithRetry(wearables: WearablesInterface) async throws -> DeviceSession {
+        var lastError: Error?
+        for attempt in 1...5 {
+            if let visible = wearables.devices.first {
+                onEvent?("glasses_selector", "specific device \(visible) attempt \(attempt)")
+                do { return try wearables.createSession(deviceSelector: SpecificDeviceSelector(device: visible)) }
+                catch { lastError = error }
+            } else {
+                onEvent?("glasses_selector", "auto (no visible devices yet) attempt \(attempt)")
+                do { return try wearables.createSession(deviceSelector: AutoDeviceSelector(wearables: wearables)) }
+                catch { lastError = error }
+            }
+            if attempt < 5 { try? await Task.sleep(for: .seconds(1)) }
+        }
+        throw lastError ?? NSError(domain: "ProperDave", code: 1,
+                                   userInfo: [NSLocalizedDescriptionKey: "No eligible device available"])
+    }
+
     func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
         AsyncStream { [weak self] continuation in
             self?.continuation = continuation
@@ -85,9 +107,17 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
             }
         } catch { fail("Glasses camera permission check failed: \(error.localizedDescription)"); return }
 
+        // Device selection, per Meta's own tracker (dat-ios discussion
+        // #290): AutoDeviceSelector populates its active device
+        // ASYNCHRONOUSLY, so handing a fresh one straight to createSession
+        // races and throws noEligibleDevice even with the glasses on your
+        // face and present in the device list. Prefer a specific selector
+        // for a visible device; otherwise wait/retry briefly while the
+        // selector populates.
         let session: DeviceSession
-        do { session = try wearables.createSession(deviceSelector: AutoDeviceSelector(wearables: wearables)) }
-        catch { fail("Could not create a glasses session: \(error.localizedDescription)"); return }
+        do {
+            session = try await createSessionWithRetry(wearables: wearables)
+        } catch { fail("Could not create a glasses session: \(error.localizedDescription)"); return }
         deviceSession = session
         session.errorPublisher.listen { [weak self] error in
             self?.fail("Glasses session error: \(error.localizedDescription)")
