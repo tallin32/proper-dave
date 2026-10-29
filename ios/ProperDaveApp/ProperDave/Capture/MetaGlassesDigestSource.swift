@@ -21,6 +21,10 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
     let sourceID = "meta-glasses"
     private(set) var lastFailure: String?
     var onFailure: ((String) -> Void)?
+    /// Lifecycle diagnostics (event, detail) -> event log, component "capture".
+    var onEvent: ((String, String) -> Void)?
+    /// User-facing one-line status (e.g. waiting for the glasses to send).
+    var onStatus: ((String) -> Void)?
 
     private var deviceSession: DeviceSession?
     private var camera: MWDATCamera.Camera?
@@ -52,9 +56,14 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
         stop()
     }
 
+    private var frameCount = 0
+    private var droppedFrames = 0
+    private var sawFirstFrame = false
+
     private func start(sessionID: UUID, interval: TimeInterval) async {
         WearablesBootstrap.configureIfNeeded()
         let wearables = Wearables.shared
+        onEvent?("glasses_registration_state", "\(wearables.registrationState)")
 
         if wearables.registrationState != .registered {
             do { try await wearables.startRegistration() }
@@ -66,7 +75,9 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
         }
 
         do {
-            if try await wearables.checkPermissionStatus(.camera) != .granted {
+            let status = try await wearables.checkPermissionStatus(.camera)
+            onEvent?("glasses_camera_permission", "\(status)")
+            if status != .granted {
                 guard try await wearables.requestPermission(.camera) == .granted else {
                     fail("Camera permission for the glasses was not granted."); return
                 }
@@ -86,6 +97,7 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
         guard await waitUntilStarted(session, timeoutSeconds: 20) else {
             fail("The glasses session did not become ready in time. Check they are on and nearby."); return
         }
+        onEvent?("glasses_session_started", "")
 
         let cam: MWDATCamera.Camera
         do {
@@ -95,12 +107,29 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
             cam = created
         } catch { fail("Could not add the glasses camera: \(error.localizedDescription)"); return }
         camera = cam
+        onEvent?("glasses_camera_added", "codec=raw low 24fps")
 
+        cam.stream.statePublisher.listen { [weak self] state in
+            guard let self else { return }
+            onEvent?("glasses_stream_state", "\(state)")
+            if state == .waitingForDevice {
+                onStatus?("Waiting for the glasses to send video — try waking them or pressing their capture button.")
+            }
+        }.store(in: tokenBag)
         cam.stream.errorPublisher.listen { [weak self] error in
             self?.fail("Glasses stream error: \(error.localizedDescription)")
         }.store(in: tokenBag)
         cam.stream.videoFramePublisher.listen { [weak self] frame in
             guard let self else { return }
+            frameCount += 1
+            if !sawFirstFrame {
+                sawFirstFrame = true
+                onEvent?("glasses_first_frame", "frames are arriving")
+                onStatus?("Glasses are sending video.")
+            }
+            if frameCount % 120 == 0 {
+                onEvent?("glasses_frames", "count=\(frameCount) droppedNoPixelBuffer=\(droppedFrames)")
+            }
             let now = Date()
             guard now.timeIntervalSince(lastEmitted) >= interval else { return }
             lastEmitted = now
@@ -108,9 +137,23 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
             if let digest = extractor.digest(sampleBuffer: frame.sampleBuffer, sessionID: sessionID,
                                              sequence: sequence, sourceID: sourceID) {
                 continuation?.yield(digest)
+            } else {
+                droppedFrames += 1
+                if droppedFrames == 1 {
+                    onEvent?("glasses_frame_no_pixel_buffer", "sampleBuffer had no image buffer; frames are arriving but cannot be digested in this format")
+                }
             }
         }.store(in: tokenBag)
         cam.stream.start()
+        onEvent?("glasses_stream_started", "")
+        // No-frame watchdog: silence here looks identical to a dead stream
+        // in the log without this, so say so once and keep waiting.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard let self, !sawFirstFrame else { return }
+            onEvent?("glasses_no_frames_yet", "stream started 15s ago, zero frames")
+            onStatus?("No video from the glasses yet. Check they are on, worn, and nearby — and try their capture button.")
+        }
     }
 
     private func waitUntilStarted(_ session: DeviceSession, timeoutSeconds: Int) async -> Bool {

@@ -61,6 +61,9 @@ public final class SessionController: ObservableObject {
     /// watching. The app may return a fallback source (e.g. phone camera)
     /// to keep the goal alive — CAP-14 degradation, not an error.
     public var fallbackSource: (() -> (any DigestSource)?)?
+    /// Notified when a live source that had been delivering frames dies
+    /// and the session falls back, so the user is told once.
+    public var onSourceFallback: ((String) -> Void)?
 
     private let log: EventLog
     private var task: Task<Void, Never>?
@@ -123,7 +126,9 @@ public final class SessionController: ObservableObject {
         state = .watching
         activeSourceID = source.sourceID
         log.append(sessionID: sessionID, component: "capture", event: "capture_started", detail: source.sourceID)
+        var received = 0
         for await digest in source.stream(sessionID: sessionID, interval: interval) {
+            received += 1
             if state == .pausedForDebug { continue }
             guard state == .watching else { break }
             let since = lastEscalationAt.map { Date().timeIntervalSince($0) }
@@ -159,12 +164,18 @@ public final class SessionController: ObservableObject {
         guard state == .watching, !Task.isCancelled else { return }
         // Active source ended mid-goal. Fall back if we can (CAP-14);
         // otherwise one terminal notice — never a retry loop (CAP-09/11).
-        log.append(sessionID: sessionID, component: "capture", event: "capture_source_ended", detail: source.sourceID)
-        if let fallback = fallbackSource?(), fallback.sourceID != source.sourceID {
+        log.append(sessionID: sessionID, component: "capture", event: "capture_source_ended",
+                   detail: "\(source.sourceID) afterFrames=\(received)")
+        // Fallback is for a source that was working and died (CAP-14), not
+        // for one that never delivered: silently switching cameras after a
+        // failed glasses start hides exactly the failure the user must see.
+        if received > 0, let fallback = fallbackSource?(), fallback.sourceID != source.sourceID {
             log.append(sessionID: sessionID, component: "capture", event: "source_fallback", detail: "to=\(fallback.sourceID)")
+            onSourceFallback?(fallback.sourceID)
             await consume(source: fallback, goal: goal, client: client)
             return
         }
+        activeSourceID = nil
         state = .failed("Frame source stopped.")
         onCriticalError?("Frame source stopped",
                          "The camera or glasses stopped sending frames. Check the source is on and nearby; for glasses, that they are registered and Developer Mode is on.")
@@ -183,6 +194,7 @@ public final class SessionController: ObservableObject {
     public func stop(confirm: Bool = true) {
         task?.cancel(); task = nil
         if state != .idle { log.append(sessionID: sessionID, component: "session", event: "goal_ended") }
+        activeSourceID = nil
         state = confirm ? .ended : .idle
     }
 }

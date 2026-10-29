@@ -161,6 +161,10 @@ final class AppModel: ObservableObject {
         // CAP-14 fallback: a dead glasses stream falls back to the phone
         // camera mid-goal instead of failing the goal.
         session.fallbackSource = { CameraDigestSource() }
+        session.onSourceFallback = { [weak self] sourceID in
+            self?.speaker.speak("Switched to \(sourceID == "iphone-camera" ? "phone camera" : sourceID).")
+            self?.glassesStatus = "Glasses stopped sending; switched to the phone camera."
+        }
         refreshGlassesState()
         // $state emits the incoming value before the stored property
         // changes, so the new state must be passed through, not re-read.
@@ -194,6 +198,12 @@ final class AppModel: ObservableObject {
             let source = MetaGlassesDigestSource()
             source.onFailure = { [weak self] message in
                 Task { @MainActor in self?.log.append(component: "capture", event: "capture_failed_terminal", detail: message) }
+            }
+            source.onEvent = { [weak self] event, detail in
+                Task { @MainActor in self?.log.append(component: "capture", event: event, detail: detail) }
+            }
+            source.onStatus = { [weak self] status in
+                Task { @MainActor in self?.glassesStatus = status }
             }
             return source
         }
@@ -236,6 +246,26 @@ final class AppModel: ObservableObject {
                 glassesStatus = "Registration failed: \(error.localizedDescription)"
             }
             log.append(component: "capture", event: "glasses_registration", detail: glassesStatus ?? "")
+        }
+    }
+
+    /// Demo reset: fully unregister from Meta AI so the next Connect runs
+    /// the complete registration flow from scratch. Also goes through the
+    /// Meta AI app and returns via the properdave:// callback.
+    func unregisterGlasses() {
+        WearablesBootstrap.configureIfNeeded()
+        glassesStatus = "Opening Meta AI to unregister…"
+        Task {
+            do {
+                try await Wearables.shared.startUnregistration()
+                glassesReady = Wearables.shared.registrationState == .registered
+                glassesStatus = glassesReady
+                    ? "Still registered — finish the removal in the Meta AI app."
+                    : "Unregistered. Use Connect Meta glasses to register again."
+            } catch {
+                glassesStatus = "Unregistration failed: \(error.localizedDescription)"
+            }
+            log.append(component: "capture", event: "glasses_unregistration", detail: glassesStatus ?? "")
         }
     }
 
