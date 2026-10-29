@@ -161,6 +161,10 @@ final class AppModel: ObservableObject {
         // CAP-14 fallback: a dead glasses stream falls back to the phone
         // camera mid-goal instead of failing the goal.
         session.fallbackSource = { CameraDigestSource() }
+        session.onSourceFallback = { [weak self] sourceID in
+            self?.speaker.speak("Switched to \(sourceID == "iphone-camera" ? "phone camera" : sourceID).")
+            self?.glassesStatus = "Glasses stopped sending; switched to the phone camera."
+        }
         refreshGlassesState()
         // $state emits the incoming value before the stored property
         // changes, so the new state must be passed through, not re-read.
