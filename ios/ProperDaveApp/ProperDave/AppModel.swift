@@ -249,6 +249,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Demo reset: fully unregister from Meta AI so the next Connect runs
+    /// the complete registration flow from scratch. Also goes through the
+    /// Meta AI app and returns via the properdave:// callback.
+    func unregisterGlasses() {
+        WearablesBootstrap.configureIfNeeded()
+        glassesStatus = "Opening Meta AI to unregister…"
+        Task {
+            do {
+                try await Wearables.shared.startUnregistration()
+                glassesReady = Wearables.shared.registrationState == .registered
+                glassesStatus = glassesReady
+                    ? "Still registered — finish the removal in the Meta AI app."
+                    : "Unregistered. Use Connect Meta glasses to register again."
+            } catch {
+                glassesStatus = "Unregistration failed: \(error.localizedDescription)"
+            }
+            log.append(component: "capture", event: "glasses_unregistration", detail: glassesStatus ?? "")
+        }
+    }
+
     func refreshGlassesState() {
         WearablesBootstrap.configureIfNeeded()
         glassesReady = Wearables.shared.registrationState == .registered

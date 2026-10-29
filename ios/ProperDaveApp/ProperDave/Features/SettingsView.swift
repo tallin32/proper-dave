@@ -30,6 +30,11 @@ struct SettingsView: View {
                               systemImage: "eyeglasses")
                     }
                     LabeledContent("Status", value: model.glassesReady ? "Connected" : "Not connected")
+                    if model.glassesReady {
+                        Button("Unregister glasses (demo reset)", role: .destructive) {
+                            model.unregisterGlasses()
+                        }
+                    }
                     if let status = model.glassesStatus {
                         Text(status).font(.footnote).foregroundStyle(.secondary)
                     }
