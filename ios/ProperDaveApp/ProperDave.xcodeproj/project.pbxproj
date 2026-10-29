@@ -7,11 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2005740B3092F68800A1FC7B /* (null) in Embed Frameworks */ = {isa = PBXBuildFile; };
+		2005740C3092F68800A1FC7B /* (null) in Embed Frameworks */ = {isa = PBXBuildFile; };
+		2005740D3092F68800A1FC7B /* (null) in Embed Frameworks */ = {isa = PBXBuildFile; };
 		BB0000000000000000000011 /* ProperDaveCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000021 /* ProperDaveCore */; };
 		BB0000000000000000000012 /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000023 /* MWDATCore */; };
 		BB0000000000000000000013 /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000024 /* MWDATCamera */; };
 		BB0000000000000000000014 /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000025 /* MWDATMockDevice */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		BB0000000000000000000095 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BB0000000000000000000091 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BB0000000000000000000071;
+			remoteInfo = ProperDave;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		BB0000000000000000000054 /* Embed Frameworks */ = {
@@ -20,9 +33,9 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				BB0000000000000000000012 /* MWDATCore in Frameworks */,
-				BB0000000000000000000013 /* MWDATCamera in Frameworks */,
-				BB0000000000000000000014 /* MWDATMockDevice in Frameworks */,
+				2005740B3092F68800A1FC7B /* (null) in Embed Frameworks */,
+				2005740C3092F68800A1FC7B /* (null) in Embed Frameworks */,
+				2005740D3092F68800A1FC7B /* (null) in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -36,7 +49,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		BB0000000000000000000055 /* Exceptions for "ProperDave" folder */ = {
+		BB0000000000000000000055 /* Exceptions for "ProperDave" folder in "ProperDave" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -49,14 +62,11 @@
 		BB0000000000000000000041 /* ProperDave */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				BB0000000000000000000055 /* Exceptions for "ProperDave" folder */,
+				BB0000000000000000000055 /* Exceptions for "ProperDave" folder in "ProperDave" target */,
 			);
 			path = ProperDave;
 			sourceTree = "<group>";
 		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXFileSystemSynchronizedRootGroup section */
 		BB0000000000000000000042 /* UITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = UITests;
@@ -76,17 +86,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		BB0000000000000000000095 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BB0000000000000000000091 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = BB0000000000000000000071;
-			remoteInfo = ProperDave;
+		BB0000000000000000000066 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXContainerItemProxy section */
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		BB0000000000000000000061 = {
@@ -161,14 +168,6 @@
 		};
 /* End PBXNativeTarget section */
 
-/* Begin PBXTargetDependency section */
-		BB0000000000000000000096 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = BB0000000000000000000071 /* ProperDave */;
-			targetProxy = BB0000000000000000000095 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin PBXProject section */
 		BB0000000000000000000091 /* Project object */ = {
 			isa = PBXProject;
@@ -210,32 +209,15 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXSourcesBuildPhase section */
-		BB0000000000000000000065 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		BB0000000000000000000066 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		BB0000000000000000000067 /* Resources */ = {
+/* Begin PBXResourcesBuildPhase section */
+		BB0000000000000000000053 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXSourcesBuildPhase section */
-
-/* Begin PBXResourcesBuildPhase section */
-		BB0000000000000000000053 /* Resources */ = {
+		BB0000000000000000000067 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -252,7 +234,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BB0000000000000000000065 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BB0000000000000000000096 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BB0000000000000000000071 /* ProperDave */;
+			targetProxy = BB0000000000000000000095 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		BB00000000000000000000B1 /* Debug */ = {
@@ -279,6 +276,8 @@
 			baseConfigurationReference = BB0000000000000000000032 /* Secrets.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3P6QN3E763;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProperDave/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -287,7 +286,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				CURRENT_PROJECT_VERSION = 1;
 				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -302,6 +300,8 @@
 			baseConfigurationReference = BB0000000000000000000032 /* Secrets.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3P6QN3E763;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProperDave/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -310,7 +310,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				CURRENT_PROJECT_VERSION = 1;
 				PRODUCT_BUNDLE_IDENTIFIER = nyc.bytemaster.ProperDave;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -355,20 +354,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		BB0000000000000000000082 /* Build configuration list for PBXProject "ProperDave" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				BB00000000000000000000B1 /* Debug */,
-				BB00000000000000000000B2 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		BB0000000000000000000081 /* Build configuration list for PBXNativeTarget "ProperDave" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB00000000000000000000C1 /* Debug */,
 				BB00000000000000000000C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB0000000000000000000082 /* Build configuration list for PBXProject "ProperDave" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB00000000000000000000B1 /* Debug */,
+				BB00000000000000000000B2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
