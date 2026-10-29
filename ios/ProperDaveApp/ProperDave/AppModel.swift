@@ -195,6 +195,12 @@ final class AppModel: ObservableObject {
             source.onFailure = { [weak self] message in
                 Task { @MainActor in self?.log.append(component: "capture", event: "capture_failed_terminal", detail: message) }
             }
+            source.onEvent = { [weak self] event, detail in
+                Task { @MainActor in self?.log.append(component: "capture", event: event, detail: detail) }
+            }
+            source.onStatus = { [weak self] status in
+                Task { @MainActor in self?.glassesStatus = status }
+            }
             return source
         }
     }

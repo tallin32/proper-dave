@@ -165,6 +165,7 @@ public final class SessionController: ObservableObject {
             await consume(source: fallback, goal: goal, client: client)
             return
         }
+        activeSourceID = nil
         state = .failed("Frame source stopped.")
         onCriticalError?("Frame source stopped",
                          "The camera or glasses stopped sending frames. Check the source is on and nearby; for glasses, that they are registered and Developer Mode is on.")
@@ -183,6 +184,7 @@ public final class SessionController: ObservableObject {
     public func stop(confirm: Bool = true) {
         task?.cancel(); task = nil
         if state != .idle { log.append(sessionID: sessionID, component: "session", event: "goal_ended") }
+        activeSourceID = nil
         state = confirm ? .ended : .idle
     }
 }

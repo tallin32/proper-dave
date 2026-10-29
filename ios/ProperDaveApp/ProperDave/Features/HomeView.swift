@@ -20,7 +20,7 @@ struct HomeView: View {
             Form {
                 Section("Status") {
                     LabeledContent("State", value: stateText)
-                    LabeledContent("Source", value: session.activeSourceID ?? model.sourceKind.rawValue)
+                    LabeledContent("Source", value: sourceDisplay)
                     LabeledContent("Backend", value: model.backend.rawValue)
                     LabeledContent("Prompt input", value: model.promptInputDescription)
                     LabeledContent("Glasses", value: model.glassesReady ? "Connected" : "Not connected (optional)")
@@ -72,6 +72,18 @@ struct HomeView: View {
             .onChange(of: dictation.transcript) { _, text in
                 if dictation.isListening { model.promptText = text }
             }
+        }
+    }
+
+    /// While watching, show the source actually feeding frames; at all
+    /// other times show the picker's selection. (Previously the last
+    /// active source stuck around after a watch ended.)
+    private var sourceDisplay: String {
+        switch session.state {
+        case .watching, .pausedForDebug:
+            return session.activeSourceID ?? model.sourceKind.rawValue
+        default:
+            return model.sourceKind.rawValue
         }
     }
 
