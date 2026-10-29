@@ -20,6 +20,8 @@ enum WearablesBootstrap {
 final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
     let sourceID = "meta-glasses"
     private(set) var lastFailure: String?
+    /// The session reads this to surface our actionable message verbatim.
+    var failureDetail: String? { lastFailure }
     var onFailure: ((String) -> Void)?
     /// Lifecycle diagnostics (event, detail) -> event log, component "capture".
     var onEvent: ((String, String) -> Void)?
@@ -106,6 +108,20 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
                 }
             }
         } catch { fail("Glasses camera permission check failed: \(error.localizedDescription)"); return }
+
+        // Glasses-side DAT component currency is Meta-managed (nothing
+        // of ours runs on the glasses), but when it lags the phone SDK
+        // the only fix is Meta AI's App Connections update — say exactly
+        // that, once, instead of failing later with a generic error.
+        for id in wearables.devices {
+            if let device = wearables.deviceForIdentifier(id),
+               device.compatibility() == .deviceUpdateRequired {
+                let message = "The app on your glasses needs an update. Go to the App Connections page in Meta AI to update it, then try again."
+                onStatus?(message)
+                fail(message)
+                return
+            }
+        }
 
         // Device selection, per Meta's own tracker (dat-ios discussion
         // #290): AutoDeviceSelector populates its active device
