@@ -74,6 +74,7 @@ public final class SessionController: ObservableObject {
     private var lastEscalationAt: Date?
     private var reportedLandmarks = Set<String>()
     private var window: [FrameDigest] = []
+    private var currentSource: (any DigestSource)?
 
     public init(log: EventLog) { self.log = log }
     public var currentSessionID: UUID { sessionID }
@@ -114,9 +115,14 @@ public final class SessionController: ObservableObject {
     /// cooldown all carry over; only the frame supply changes.
     public func switchSource(to source: any DigestSource) {
         guard state == .watching || state == .pausedForDebug, let goal, let client else { return }
+        // Stop the old source explicitly: cancelling the task alone leaves
+        // its producer (e.g. an AVCaptureSession) running, and its loop
+        // would keep consuming the shared session after the switch.
+        let old = currentSource
         task?.cancel()
+        old?.stop()
         log.append(sessionID: sessionID, component: "capture", event: "source_switched",
-                   detail: "to=\(source.sourceID)")
+                   detail: "from=\(old?.sourceID ?? "none") to=\(source.sourceID)")
         task = Task { [weak self] in
             await self?.consume(source: source, goal: goal, client: client)
         }
@@ -125,9 +131,13 @@ public final class SessionController: ObservableObject {
     private func consume(source: any DigestSource, goal: GoalContext, client: any CloudModelClient) async {
         state = .watching
         activeSourceID = source.sourceID
+        currentSource = source
         log.append(sessionID: sessionID, component: "capture", event: "capture_started", detail: source.sourceID)
         var received = 0
         for await digest in source.stream(sessionID: sessionID, interval: interval) {
+            // A cancelled task belongs to a superseded source: stop eating
+            // its frames even though the session itself is still watching.
+            if Task.isCancelled { break }
             received += 1
             if state == .pausedForDebug { continue }
             guard state == .watching else { break }
@@ -193,6 +203,7 @@ public final class SessionController: ObservableObject {
     }
     public func stop(confirm: Bool = true) {
         task?.cancel(); task = nil
+        currentSource?.stop(); currentSource = nil
         if state != .idle { log.append(sessionID: sessionID, component: "session", event: "goal_ended") }
         activeSourceID = nil
         state = confirm ? .ended : .idle
