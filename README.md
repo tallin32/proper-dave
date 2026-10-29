@@ -25,15 +25,29 @@ Build step 1–2 from TRD-000 §8:
   absence is never an error, and a dead glasses stream falls back to the
   phone camera (TRD-001 CAP-13/14, covered by core tests).
 
-Still to build: the real-model adapter (TRD-003) and field verification
-on real glasses.
+The server picks its model back end by configuration (TRD-003 CLD-04):
+`fake` (default), `local` (an OpenAI-compatible endpoint on this
+machine, e.g. Ollama), or `frontier` (a hosted OpenAI-compatible API;
+key lives only in the server's environment). The client never knows
+which is live; `/v1/health` reports it. Still to build: field
+verification on real glasses, and the fully-offline on-device fallback.
 
 ## Run
 
 ```sh
 uv sync --group dev
 uv run proper-dave-server     # 0.0.0.0:3283 ("DAVE")
-uv run pytest                 # 12 tests
+uv run pytest                 # 26 tests
+```
+
+Dev server against a workstation-local model, or a frontier API:
+
+```sh
+PROPER_DAVE_MODEL_BACKEND=local uv run proper-dave-server
+# defaults: http://localhost:11434/v1, model llama3.2-vision:11b
+PROPER_DAVE_MODEL_BACKEND=frontier PROPER_DAVE_FRONTIER_BASE_URL=... \
+  PROPER_DAVE_FRONTIER_MODEL=... PROPER_DAVE_FRONTIER_API_KEY=... \
+  uv run proper-dave-server
 ```
 
 ```sh
@@ -47,4 +61,8 @@ builds and runs fully on phone/mock sources. Set your Apple team in
 Signing & Capabilities so `TeamID` fills in.
 
 Optional environment: `PROPER_DAVE_PORT`, `PROPER_DAVE_API_KEY`,
-`PROPER_DAVE_SERVER_LOG` (JSONL server log).
+`PROPER_DAVE_SERVER_LOG` (JSONL server log), and the
+`PROPER_DAVE_MODEL_BACKEND` / `PROPER_DAVE_LOCAL_*` /
+`PROPER_DAVE_FRONTIER_*` family (`*_BASE_URL`, `*_MODEL`,
+`*_PARSE_MODEL`, `*_EVALUATE_MODEL`, `*_API_KEY`) selecting the model
+back end. Parse and evaluate may use different model tiers.

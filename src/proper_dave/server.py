@@ -1,5 +1,8 @@
 """MVP server (TRD-004). Run: uv run proper-dave-server  (0.0.0.0:3283)
-Env: PROPER_DAVE_PORT, PROPER_DAVE_API_KEY, PROPER_DAVE_SERVER_LOG.
+Env: PROPER_DAVE_PORT, PROPER_DAVE_API_KEY, PROPER_DAVE_SERVER_LOG,
+PROPER_DAVE_MODEL_BACKEND (fake|local|frontier, default fake) plus
+PROPER_DAVE_LOCAL_* / PROPER_DAVE_FRONTIER_* (see model_backends.py).
+The client never sees which back end is live (CLD-04).
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .cloud import CloudModelClient, FakeCloudModel
+from .model_backends import ModelUnavailable, model_from_env
 from .models import CalloutResult, EscalationRequest, ParseGoalRequest
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -53,7 +57,13 @@ def create_app(client: CloudModelClient | None = None, *, api_key: str | None = 
     def parse(body: ParseGoalRequest):
         if not body.raw_text.strip():
             return _err(400, "bad_request", "Goal text is empty.")
-        return model.parse_goal(body.raw_text)
+        try:
+            return model.parse_goal(body.raw_text)
+        except ModelUnavailable as exc:
+            # Unparseable/unreachable model: the goal does not start.
+            log({"component": "cloud", "event": "parse_model_unavailable",
+                 "detail": str(exc)[:200]})
+            return _err(502, "model_unavailable", "The model could not parse that goal.")
 
     @app.post("/v1/escalations")
     def escalate(body: EscalationRequest):
@@ -71,7 +81,14 @@ def create_app(client: CloudModelClient | None = None, *, api_key: str | None = 
             return CalloutResult.no_callout("rate_limited")
         last_seen[session] = now
         started = time.monotonic()
-        result = model.evaluate(body)
+        try:
+            result = model.evaluate(body)
+        except ModelUnavailable as exc:
+            # Timeout/malformed output counts as no-callout (TRD-003 §4):
+            # silence, never a crash in the watching loop.
+            log({"component": "cloud", "event": "model_unavailable",
+                 "sessionID": session, "detail": str(exc)[:200]})
+            return CalloutResult.no_callout("model_unavailable")
         log({"component": "cloud",
              "event": "callout_received" if result.kind == "callout" else "no_callout",
              "sessionID": session,
@@ -81,14 +98,23 @@ def create_app(client: CloudModelClient | None = None, *, api_key: str | None = 
     return app
 
 
-app = create_app(api_key=os.environ.get("PROPER_DAVE_API_KEY") or None,
-                 log_path=os.environ.get("PROPER_DAVE_SERVER_LOG") or None)
+def _configured_app() -> FastAPI:
+    return create_app(client=model_from_env(),
+                      api_key=os.environ.get("PROPER_DAVE_API_KEY") or None,
+                      log_path=os.environ.get("PROPER_DAVE_SERVER_LOG") or None)
 
 
 def main() -> None:
+    import sys
+
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0",
+    try:
+        configured = _configured_app()
+    except ValueError as exc:
+        print(f"proper-dave-server: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    uvicorn.run(configured, host="0.0.0.0",
                 port=int(os.environ.get("PROPER_DAVE_PORT", "3283")))
 
 
