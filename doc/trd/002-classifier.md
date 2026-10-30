@@ -10,11 +10,15 @@ transparent scoring gate; a learned on-device model may replace it later
 behind this identical interface.
 
 ```swift
+enum GoalKind: Codable { case watch, question, describe }
+
 struct GoalContext: Codable {
     var rawText: String
-    var targets: [String]
+    var kind: GoalKind = .watch        // see §5 for describe
+    var targets: [String]              // may be empty for describe (§5)
     var exclusions: [String]
     var progressLandmarks: String?   // e.g. "gate numbers", see §4
+    var verbosity: Verbosity = .notable  // describe only: landmarks | notable | detailed
     var expiresAt: Date?
 }
 
@@ -67,6 +71,8 @@ matches against `exclusions`.
 | People cross an elevator watch; indicator unchanged | Suppressed as not relevant. |
 | Elevator doors open / indicator changes | One escalation, one callout. |
 | Thermostat goal; camera passes laundry, then the thermostat | Laundry silent; thermostat escalates. |
+| Describe goal; a candy wrapper blows past, then a named storefront appears | Wrapper suppressed (transient, low saliency); storefront escalates once. |
+| Describe goal; the fourth identical coffee chain on the same walk | Suppressed as an already-announced topic. |
 
 ## 4. Progress landmarks
 
@@ -81,17 +87,60 @@ earlier member is useful orientation, not noise.
   still subject to CLS-07/08. This is the seed of the sketch's
   programmable mini-skills; the general skill mechanism is post-MVP.
 
-## 5. Failure behaviour
+## 5. Describe goals (open-ended narration)
+
+A user may ask for the world itself, not a target: "tell me what I see
+as I pass." That is a **describe** goal. It inverts the watch-goal
+question — not "does this match what I'm after?" but "is this notable,
+and is it new?" The user has consented to narration by asking; the
+restraint survives as the notability bar. (Scenario that named this
+section: a Fifth Avenue stroll, and a candy wrapper blowing past —
+true, visible, and beneath notice.)
+
+- **CLS-12** Describe goals need no targets and may start with an
+  empty target set; §6's no-targets rule applies to watch goals only.
+  Parsing instead extracts focus categories ("shops", "building
+  names") into `targets` when present, and exclusions as usual.
+- **CLS-13** A **saliency score** replaces relevance for describe:
+  named places and signage, entrances, landmarks, and obstacles in
+  the path score high; transient small objects (blowing litter),
+  individual passers-by, and already-announced topics score at or
+  below zero. Announced topics are remembered per session — the
+  fourth identical coffee chain is not news.
+- **CLS-14** Describe speaks on **scene transitions, not frames**:
+  the caller accumulates a digest window and escalates at a
+  transition (new block, new frontage) or window close, under a
+  longer cooldown than CLS-07 (default 20 s, reversible). The model
+  summarises only what is newly notable, in one or two sentences —
+  never an exhaustive inventory of a frame.
+- **CLS-15** `verbosity` sets the saliency threshold:
+  `landmarks` (named places, entrances, obstacles only), `notable`
+  (default; adds storefronts and signage), `detailed` (adds minor
+  features — where candy wrappers may legitimately appear, at the
+  user's explicit request). It is part of the goal and refinable.
+- **CLS-16** **Mid-goal refinement**: a follow-up utterance — "just
+  the landmarks", "skip shops", "more detail" — is parsed as a patch
+  to the running goal (targets, exclusions, verbosity), not a new
+  goal. Session, source, window, cooldown, and announced-topic state
+  all carry over. An unparseable refinement is announced once and
+  the existing goal continues unchanged; refinement never silently
+  restarts or ends a watch.
+
+## 6. Failure behaviour
 
 - **CLS-11** Any internal error fails closed: suppress, log, move on.
   Silence plus a diagnosable log beats a callout storm.
-- A goal with no extractable targets never starts; the user is asked once
-  to rephrase. Watching with an empty target set is how you get
-  "describe everything forever".
+- A watch goal with no extractable targets never starts; the user is
+  asked once to rephrase. Watching with an empty target set is how
+  you get "describe everything forever" — which is only ever entered
+  deliberately, as a describe goal under §5's stricter gate.
 
-## 6. Tests
+## 7. Tests
 
 Golden vectors for every row of §3, run against both implementations;
 offline replay of recorded digests reporting escalation counts (bar:
 zero escalations on five minutes of static scene); a flickering-sign
-adversarial case proving CLS-07 holds.
+adversarial case proving CLS-07 holds. Describe adds: golden vectors
+for saliency/dedupe, a recorded-stroll replay whose escalation count
+stays transition-paced (not frame-paced), and a refinement test
+proving session state survives a verbosity change (CLS-16).
