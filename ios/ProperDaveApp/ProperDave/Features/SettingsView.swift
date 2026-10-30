@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -47,11 +48,13 @@ struct SettingsView: View {
                 if model.backend == .server {
                     Section {
                         TextField("Host (IP or DNS name)", text: $model.serverHost)
+                            .focused($fieldFocused)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                         Stepper(value: $model.serverPort, in: 1...65535) {
                             LabeledContent("Port", value: "\(model.serverPort)")
                         }
                         SecureField("API key (optional)", text: $model.apiKey)
+                            .focused($fieldFocused)
                         Button {
                             model.testConnection()
                         } label: {
@@ -106,6 +109,7 @@ struct SettingsView: View {
                         ForEach(CriticalPresentation.allCases) { Text($0.rawValue).tag($0) }
                     }
                     TextField("Codename", text: $model.codename)
+                        .focused($fieldFocused)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Trigger test critical error", role: .destructive) { model.triggerTestCriticalError() }
                     NavigationLink("Debug log") { LogView() }
@@ -116,6 +120,8 @@ struct SettingsView: View {
                 }
                 #endif
             }
+            .scrollDismissesKeyboard(.interactively)
+            .keyboardDoneToolbar(focus: $fieldFocused)
             .navigationTitle("Settings")
         }
     }

@@ -7,6 +7,7 @@ struct HomeView: View {
     // re-render this view when the session changes (nested ObservableObject).
     @EnvironmentObject private var session: SessionController
     @StateObject private var dictation = Dictation()
+    @FocusState private var goalFocused: Bool
 
     private let examples = [
         "Tell me when the elevator arrives at my floor",
@@ -68,6 +69,8 @@ struct HomeView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .keyboardDoneToolbar(focus: $goalFocused)
             .navigationTitle("Proper Dave")
             .onChange(of: dictation.transcript) { _, text in
                 if dictation.isListening { model.promptText = text }
@@ -108,9 +111,9 @@ struct HomeView: View {
     private var goalSection: some View {
         Section {
             TextField("Type what to watch for…", text: $model.promptText, axis: .vertical)
+                .focused($goalFocused)
                 .lineLimit(2...5)
                 .accessibilityLabel("Goal prompt")
-                .accessibilityHint("Type what Proper Dave should watch for, then start watching.")
             if let error = dictation.errorText {
                 Text(error).font(.footnote).foregroundStyle(.secondary)
             }

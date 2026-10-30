@@ -1,7 +1,23 @@
 import AVFoundation
 import Foundation
+import SwiftUI
 import UIKit
 import UserNotifications
+
+extension View {
+    /// Every text field needs an explicit way out of the keyboard: the
+    /// standard keyboard toolbar with a plain "Done" button that ends
+    /// editing (plus drag-to-dismiss where applied). Relying on tapping
+    /// another control or scrolling is not a dismissal path.
+    func keyboardDoneToolbar(focus: FocusState<Bool>.Binding) -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focus.wrappedValue = false }
+            }
+        }
+    }
+}
 
 /// Spoken callouts (TRD-003): one at a time, system rate.
 final class Speaker: NSObject, ObservableObject {
