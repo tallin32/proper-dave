@@ -114,7 +114,6 @@ struct HomeView: View {
                 .focused($goalFocused)
                 .lineLimit(2...5)
                 .accessibilityLabel("Goal prompt")
-                .accessibilityHint("Type what Proper Dave should watch for, then start watching.")
             if let error = dictation.errorText {
                 Text(error).font(.footnote).foregroundStyle(.secondary)
             }
