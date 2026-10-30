@@ -23,7 +23,7 @@ B62" — every few seconds.
 
 | Term | Meaning |
 |---|---|
-| Goal | One natural-language request, parsed into targets, optional exclusions, an optional progress pattern, and an expiry. |
+| Goal | One natural-language request of one of three kinds — **watch** (find a target), **question** (one-shot, escalate immediately), **describe** (open-ended narration of what's notable, TRD-002 §5) — parsed into targets, optional exclusions, an optional progress pattern, and an expiry. |
 | Digest | A small on-device summary of one frame: labels, OCR text, coarse change metrics. Digests are compared and usually sent; raw video is not. |
 | Classifier | The on-device component (TRD-002) that turns a digest + recent digests + goal into a Decision. |
 | Decision | `SUPPRESS`, `ESCALATE_DIGEST`, or `ESCALATE_FRAME`. Default: `SUPPRESS`. |
@@ -72,6 +72,13 @@ all stages ─▶ structured event log (debug builds)
   confirmed once.
 - One-shot questions (“what's on this window sill?”) are goals that
   escalate immediately and watch nothing — same pipeline, no special mode.
+- Open-ended requests (“tell me what I see as I pass”) are **describe**
+  goals: narration the user explicitly asked for, gated by notability
+  and novelty rather than target relevance (TRD-002 §5). SYS-02 still
+  applies — what changes is the bar, not the existence of one.
+- A running goal may be **refined** mid-flight (“just the landmarks”,
+  “skip shops”) by typed or dictated text; refinement edits the goal
+  and never restarts the session (TRD-002 CLS-16).
 
 ## 7. Out of scope for the MVP
 

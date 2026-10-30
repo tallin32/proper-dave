@@ -44,7 +44,11 @@ Uniform shape: `{"error": {"code", "message"}}` with codes `bad_request`,
 `internal`. The client speaks a given code's message at most once per
 session. Breaking changes move to `/v2`; within `/v1` only additive
 optional fields. `skillID` is reserved-and-ignored now so programmable
-skills (post-MVP) don't force a v2.
+skills (post-MVP) don't force a v2. `GoalContext` likewise gains
+`kind` (watch/question/describe) and `verbosity` as additive optional
+fields with defaults (`watch`, `notable`), so describe goals
+(TRD-002 §5) ride `/v1` without a version bump; older payloads mean
+exactly what they meant before.
 
 ## 5. Security, honestly scoped
 

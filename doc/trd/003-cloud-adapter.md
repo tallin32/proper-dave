@@ -29,10 +29,26 @@ enum CalloutResult {
 
 ## 2. Goal parsing
 
-One cloud call when a goal starts turns raw text into targets,
-exclusions, and a possible progress pattern (TRD-002 §4), via a
-structured-output prompt. Unparseable output means the goal does not
-start — there is no free-text fallback watching mode.
+One cloud call when a goal starts turns raw text into a goal kind
+(watch / question / describe), targets, exclusions, and a possible
+progress pattern (TRD-002 §4), via a structured-output prompt.
+Unparseable output means the goal does not start — there is no
+free-text fallback watching mode. For describe goals the same call
+extracts focus categories and a verbosity default instead of
+requiring targets (TRD-002 CLS-12/15).
+
+The same parse contract serves **mid-goal refinement** (CLS-16):
+given the running goal plus a follow-up utterance, it returns the
+patched goal. A refinement that cannot be parsed is reported to the
+user once and the running goal is left exactly as it was.
+
+For describe escalations the model's instruction differs from watch:
+summarise only what is newly notable in this window — named places
+read verbatim, entrances, obstacles in the path — in one or two
+sentences. No exhaustive inventories, no transient litter at default
+verbosity, no re-announcing topics the session already covered.
+CLD-01/02 (silence is respectable; never report mere absence) still
+bind: a window with nothing notable returns no-callout.
 
 ## 3. Two back ends, one contract
 
