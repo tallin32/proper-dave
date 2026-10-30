@@ -12,7 +12,7 @@ final class KeyboardUITests: XCTestCase {
         field.typeText("Tell me when the elevator arrives")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
                       "keyboard should be up while editing the goal")
-        let done = app.buttons["Done editing"]
+        let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5),
                       "keyboard toolbar should offer Done")
         done.tap()

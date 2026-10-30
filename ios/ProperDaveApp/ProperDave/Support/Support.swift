@@ -5,17 +5,15 @@ import UIKit
 import UserNotifications
 
 extension View {
-    /// Every text field needs an explicit way out of the keyboard: a
-    /// Done button above it that ends editing (plus drag-to-dismiss
-    /// where applied). VoiceOver users get the same button; relying on
-    /// tapping another control or scrolling is not a dismissal path.
+    /// Every text field needs an explicit way out of the keyboard: the
+    /// standard keyboard toolbar with a plain "Done" button that ends
+    /// editing (plus drag-to-dismiss where applied). Relying on tapping
+    /// another control or scrolling is not a dismissal path.
     func keyboardDoneToolbar(focus: FocusState<Bool>.Binding) -> some View {
         toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { focus.wrappedValue = false }
-                    .accessibilityLabel("Done editing")
-                    .accessibilityHint("Dismisses the keyboard.")
             }
         }
     }
