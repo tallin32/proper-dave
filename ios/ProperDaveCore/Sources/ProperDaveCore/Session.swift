@@ -10,10 +10,15 @@ public protocol DigestSource: Sendable {
     var failureDetail: String? { get }
     func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest>
     func stop()
+    /// JPEG frame corresponding to a digest, when the source can retain
+    /// it. ESCALATE_FRAME exists to ask a model to look; sources that
+    /// only produce digests return nil and the model is told so.
+    func imageData(for digest: FrameDigest) -> Data?
 }
 
 public extension DigestSource {
     var failureDetail: String? { nil }
+    func imageData(for digest: FrameDigest) -> Data? { nil }
 }
 
 /// Scripted concourse walk for demos/tests. No camera, no glasses.
@@ -163,8 +168,10 @@ public final class SessionController: ObservableObject {
             if let landmark = scores.landmark { reportedLandmarks.insert(landmark) }
             lastEscalationAt = Date()
             escalationCount += 1
+            let image = source.imageData(for: digest)?.base64EncodedString()
             let request = EscalationRequest(sessionID: sessionID, goal: goal, digest: digest,
-                                            recentDigests: window, lastCallout: lastCallout)
+                                            recentDigests: window, image: image,
+                                            lastCallout: lastCallout)
             log.append(sessionID: sessionID, component: "cloud", event: "escalation_sent", detail: decision.name)
             do {
                 switch try await client.evaluate(request) {

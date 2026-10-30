@@ -3,6 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @FocusState private var fieldFocused: Bool
+    @EnvironmentObject private var modelPacks: ModelPackManager
+    @State private var showDownloadConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -43,6 +45,35 @@ struct SettingsView: View {
                     Text("Meta glasses (optional)")
                 } footer: {
                     Text("Available any time, including during a watch — connecting switches the live session over. Registration opens the Meta AI app and returns via properdave://.")
+                }
+
+                if model.backend == .offline {
+                    Section {
+                        Picker("Offline model", selection: $model.offlineTier) {
+                            ForEach(OfflineTier.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        Text(model.offlineStatusText).font(.footnote).foregroundStyle(.secondary)
+                        if model.offlineTier == .downloadable {
+                            switch modelPacks.state {
+                            case .notDownloaded, .failed:
+                                Button("Download Qwen3-VL 2B (about 1.8 GB)") { showDownloadConfirmation = true }
+                            case .downloading(let progress):
+                                ProgressView(value: progress) { Text("Downloading model") }
+                                Button("Cancel download", role: .destructive) { modelPacks.cancelDownload() }
+                            case .downloaded:
+                                Button("Delete downloaded model", role: .destructive) { modelPacks.deletePack() }
+                            }
+                            LabeledContent("Model", value: "Qwen3-VL 2B, 4-bit MLX")
+                            LabeledContent("Licence", value: "Apache-2.0")
+                            LabeledContent("Pinned revision", value: String(modelPacks.spec.revision.prefix(8)))
+                        }
+                    } header: {
+                        Text("Offline model")
+                    } footer: {
+                        Text(model.offlineTier == .apple
+                             ? "Works with no network once iOS has the system model ready. Proper Dave downloads nothing for this tier; iOS manages the model and its storage. It judges from the scene digest and any attached escalation frame the system model accepts. Slower and less capable than a frontier server model, and long watches cost battery and heat."
+                             : "Works with no network after the one user-started download. Download on Wi-Fi if possible: about 1.8 GB, stored only in Proper Dave's sandbox, and deletable above. It can inspect attached escalation frames plus the scene digest. Expect slower answers, real battery and heat cost on long watches, and weaker judgement than a frontier server model.")
+                    }
                 }
 
                 if model.backend == .server {
@@ -123,6 +154,12 @@ struct SettingsView: View {
             .scrollDismissesKeyboard(.interactively)
             .keyboardDoneToolbar(focus: $fieldFocused)
             .navigationTitle("Settings")
+            .alert("Download about 1.8 GB?", isPresented: $showDownloadConfirmation) {
+                Button("Download") { modelPacks.startDownload() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Qwen3-VL 2B (Apache-2.0) will download from Hugging Face into Proper Dave's own storage. It is about 1.8 GB installed, can be deleted from this screen, and inference afterward uses no network. Prefer Wi-Fi and a charger.")
+            }
         }
     }
 }

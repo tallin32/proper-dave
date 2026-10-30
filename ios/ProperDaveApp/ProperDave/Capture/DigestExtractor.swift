@@ -1,3 +1,4 @@
+import CoreImage
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -9,6 +10,15 @@ import Vision
 /// glasses frames alike so a digest means the same thing from any source.
 struct DigestExtractor {
     private var previous = Set<String>()
+    private let ciContext = CIContext()
+
+    /// Bounded JPEG retention for ESCALATE_FRAME: the model can only
+    /// look at a frame the source actually kept.
+    func jpegData(pixelBuffer: CVPixelBuffer) -> Data? {
+        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        return ciContext.jpegRepresentation(of: image, colorSpace: CGColorSpaceCreateDeviceRGB(),
+                                            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.72])
+    }
 
     mutating func digest(pixelBuffer: CVPixelBuffer, sessionID: UUID, sequence: Int,
                          sourceID: String) -> FrameDigest {
