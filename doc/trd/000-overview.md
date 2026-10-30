@@ -80,6 +80,22 @@ BYOK key custody, hosted deployment, Android, visual polish beyond
 legibility. Interfaces may reserve names for these; code may not
 implement them.
 
+Recorded post-MVP directions (still out of scope; noted so today's
+interfaces keep room for them):
+
+- **User-authored skills.** Users will be able to import small,
+  declarative skill packs — a "small appliance" skill, a "thermostat"
+  mix-in — declared in a manifest much like an agent skill's front
+  matter (name, when to bring it in, targets, prompt fragment,
+  thresholds) and loaded on request, mixed into goal parsing and
+  escalation judgement. The wire contract already reserves `skillID`
+  for this (TRD-004 §4); nothing in the MVP implements loading,
+  authoring, or trust/sandboxing of skills, and those questions are
+  deliberately undecided here.
+- **Incident reporting.** Crashes and failures the user cannot solve
+  should eventually be sendable as incident reports to the operator
+  (TRD-005 §9) — always by explicit user action, never silently.
+
 ## 8. Build order
 
 1. Server + fake model behind the TRD-004 contract.
