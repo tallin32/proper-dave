@@ -52,6 +52,10 @@ all stages ─▶ structured event log (debug builds)
 - **SYS-06** Glasses are an enhancement, never a prerequisite, and may be
   connected at any time, including mid-goal (TRD-001 CAP-13/14). Their
   absence is not an error state and is never announced as one.
+- **SYS-07** An offline on-device model is an enhancement, never a
+  prerequisite: the server path must keep working without it, and the
+  offline path must keep working with no network at all (TRD-003 §4).
+  Neither mode silently substitutes for the other.
 
 ## 5. Components
 

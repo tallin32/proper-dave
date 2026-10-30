@@ -16,6 +16,9 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
     private var interval: TimeInterval = 1
     private var extractor = DigestExtractor()
     private var configured = false
+    private var framesBySequence: [Int: Data] = [:]
+
+    func imageData(for digest: FrameDigest) -> Data? { framesBySequence[digest.sequence] }
 
     func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
         self.sessionID = sessionID
@@ -61,6 +64,11 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
         sequence += 1
         if let digest = extractor.digest(sampleBuffer: sampleBuffer, sessionID: sessionID,
                                          sequence: sequence, sourceID: sourceID) {
+            if let buffer = CMSampleBufferGetImageBuffer(sampleBuffer),
+               let jpeg = extractor.jpegData(pixelBuffer: buffer) {
+                framesBySequence[sequence] = jpeg
+                framesBySequence = framesBySequence.filter { $0.key > sequence - 5 }
+            }
             continuation?.yield(digest)
         }
     }

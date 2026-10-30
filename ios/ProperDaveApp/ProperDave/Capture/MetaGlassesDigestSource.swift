@@ -37,6 +37,9 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
     private let frameDecoder = HEVCFrameDecoder()
     private var lastEmitted = Date.distantPast
     private var sequence = 0
+    private var framesBySequence: [Int: Data] = [:]
+
+    func imageData(for digest: FrameDigest) -> Data? { framesBySequence[digest.sequence] }
 
     /// Session creation with the selector race worked around: specific
     /// device when one is visible, up to 5 attempts a second apart while
@@ -195,6 +198,10 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
             // Compressed hvc1 must be decompressed before Vision sees it
             // (Meta's sample does the equivalent via its own decoder).
             if let pixelBuffer = frameDecoder.decode(frame.sampleBuffer) {
+                if let jpeg = extractor.jpegData(pixelBuffer: pixelBuffer) {
+                    framesBySequence[sequence] = jpeg
+                    framesBySequence = framesBySequence.filter { $0.key > self.sequence - 5 }
+                }
                 continuation?.yield(extractor.digest(pixelBuffer: pixelBuffer, sessionID: sessionID,
                                                      sequence: sequence, sourceID: sourceID))
             } else {

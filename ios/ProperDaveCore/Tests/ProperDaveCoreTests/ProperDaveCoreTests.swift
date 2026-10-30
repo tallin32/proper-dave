@@ -40,6 +40,64 @@ final class ProperDaveCoreTests: XCTestCase {
         XCTAssertFalse(ExperimentalFeatures.glassesMicrophoneEnabled(userEnabled: true, buildAllows: false))
         XCTAssertFalse(ExperimentalFeatures.glassesMicrophoneEnabled(userEnabled: false, buildAllows: true))
     }
+    func testDownloadablePackSpecIsPinnedAndSized() {
+        let spec = ModelPackSpec.qwen3VL2B
+        XCTAssertEqual(spec.totalBytes, 1_798_022_204)
+        XCTAssertEqual(Set(spec.files.map(\.name)).count, spec.files.count)
+        XCTAssertTrue(spec.files.contains { $0.name == "model.safetensors" && $0.bytes > 1_700_000_000 })
+        XCTAssertEqual(spec.license, "Apache-2.0")
+    }
+
+    func testLocalModelPromptCarriesDigestAndImageHonesty() {
+        let goal = GoalContext(rawText: "find gate B62", targets: ["Gate B62"])
+        let request = EscalationRequest(
+            sessionID: UUID(), goal: goal,
+            digest: digest(labels: ["sign"], ocr: ["Gate B62"]),
+            recentDigests: [], image: nil, lastCallout: "Gate B40 ahead.")
+        let prompt = LocalModelPrompt.escalation(request)
+        XCTAssertTrue(prompt.contains("Gate B62"))
+        XCTAssertTrue(prompt.contains("Attached image: no"))
+        XCTAssertTrue(prompt.contains("do not invent visual details"))
+    }
+
+    final class ImageSpySource: DigestSource, @unchecked Sendable {
+        let sourceID = "image-spy"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                continuation.yield(FrameDigest(
+                    sessionID: sessionID, sequence: 1, sourceID: sourceID,
+                    ocrText: [OCRSpan(text: "Gate B62")],
+                    sceneChange: ChangeMetrics(pixelDiff: 0.7)))
+                continuation.finish()
+            }
+        }
+        func stop() {}
+        func imageData(for digest: FrameDigest) -> Data? { Data("jpeg".utf8) }
+    }
+
+    final class RecordingClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "recording"
+        private(set) var images: [String?] = []
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["Gate B62"])
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            images.append(request.image)
+            return .noCallout(reason: "test")
+        }
+    }
+
+    @MainActor
+    func testSessionAttachesSourceImageToEscalation() async throws {
+        let session = SessionController(log: EventLog())
+        let client = RecordingClient()
+        session.start(goalText: "find gate B62", client: client,
+                      source: ImageSpySource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.5))
+        session.stop()
+        XCTAssertEqual(client.images, [Data("jpeg".utf8).base64EncodedString()])
+    }
+
     func testCalloutDecodesServerJSON() throws {
         let json = #"{"kind":"noCallout","text":null,"relevance":null,"reason":"rate_limited"}"#
         XCTAssertEqual(try JSONDecoder().decode(CalloutResult.self, from: Data(json.utf8)),
