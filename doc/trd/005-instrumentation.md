@@ -128,6 +128,22 @@ that customisation stays visible. What production hides is the
 - **INS-14** Enabling or disabling Developer Mode is logged
   (INS-01), takes effect without restart, and disabling it returns
   every gated control to its hidden state immediately.
+- **INS-17** *Accessibility density* (design note, not yet built): a
+  Developer Mode setting choosing whether VoiceOver meets grouped UI
+  as one combined element or as every child control separately. The
+  developer-user needs both at different times — the full tree when
+  diagnosing, the quiet summary when using. Intended mechanism: one
+  custom environment value injected at the root from the setting,
+  read by a single view modifier applied at call sites
+  (`.contain` vs `.combine`), never conditionals sprinkled through
+  views. Known trap, recorded so it is not rediscovered mid-field:
+  `.combine` over a group containing a slider (or other adjustable
+  control) swallows its adjustability — VoiceOver gets one static
+  element. So: combine read-only groups freely (status rows,
+  label/value pairs); for interactive groups, "combined" instead
+  folds label and value onto the control itself and hides the
+  caption from the tree. Exact API awaits a prototype, likely
+  against the heartbeat sliders (INS/§3) which exhibit both shapes.
 
 ## 9. Incident reporting (post-hackathon direction)
 
