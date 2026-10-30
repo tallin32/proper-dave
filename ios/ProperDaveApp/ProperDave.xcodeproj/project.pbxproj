@@ -14,6 +14,11 @@
 		BB0000000000000000000012 /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000023 /* MWDATCore */; };
 		BB0000000000000000000013 /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000024 /* MWDATCamera */; };
 		BB0000000000000000000014 /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000025 /* MWDATMockDevice */; };
+		BB0000000000000000000015 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BB000000000000000000002A /* MLXLMCommon */; };
+		BB0000000000000000000016 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = BB000000000000000000002B /* MLXVLM */; };
+		BB0000000000000000000018 /* MLXFoundationModels in Frameworks */ = {isa = PBXBuildFile; productRef = BB000000000000000000002D /* MLXFoundationModels */; };
+		BB0000000000000000000019 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = BB000000000000000000002E /* HuggingFace */; };
+		BB000000000000000000001A /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = BB000000000000000000002F /* Tokenizers */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -83,6 +88,11 @@
 				BB0000000000000000000012 /* MWDATCore in Frameworks */,
 				BB0000000000000000000013 /* MWDATCamera in Frameworks */,
 				BB0000000000000000000014 /* MWDATMockDevice in Frameworks */,
+				BB0000000000000000000015 /* MLXLMCommon in Frameworks */,
+				BB0000000000000000000016 /* MLXVLM in Frameworks */,
+				BB0000000000000000000018 /* MLXFoundationModels in Frameworks */,
+				BB0000000000000000000019 /* HuggingFace in Frameworks */,
+				BB000000000000000000001A /* Tokenizers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -140,6 +150,11 @@
 				BB0000000000000000000023 /* MWDATCore */,
 				BB0000000000000000000024 /* MWDATCamera */,
 				BB0000000000000000000025 /* MWDATMockDevice */,
+				BB000000000000000000002A /* MLXLMCommon */,
+				BB000000000000000000002B /* MLXVLM */,
+				BB000000000000000000002D /* MLXFoundationModels */,
+				BB000000000000000000002E /* HuggingFace */,
+				BB000000000000000000002F /* Tokenizers */,
 			);
 			productName = ProperDave;
 			productReference = BB0000000000000000000031 /* ProperDave.app */;
@@ -197,6 +212,9 @@
 			packageReferences = (
 				BB0000000000000000000022 /* XCLocalSwiftPackageReference "../ProperDaveCore" */,
 				BB0000000000000000000026 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
+				BB0000000000000000000027 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				BB0000000000000000000028 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				BB0000000000000000000029 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BB0000000000000000000062 /* Products */;
@@ -399,6 +417,30 @@
 				version = 1.0.1;
 			};
 		};
+		BB0000000000000000000027 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 3.32.3;
+			};
+		};
+		BB0000000000000000000028 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+		BB0000000000000000000029 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -420,6 +462,31 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BB0000000000000000000026 /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
 			productName = MWDATMockDevice;
+		};
+		BB000000000000000000002A /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000027 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		BB000000000000000000002B /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000027 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXVLM;
+		};
+		BB000000000000000000002D /* MLXFoundationModels */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000027 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXFoundationModels;
+		};
+		BB000000000000000000002E /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000028 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		BB000000000000000000002F /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000029 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -6,6 +6,13 @@ import ProperDaveCore
 enum Backend: String, CaseIterable, Identifiable {
     case demo = "On-device demo (no server)"
     case server = "Server"
+    case offline = "Offline on-device model"
+    var id: String { rawValue }
+}
+
+enum OfflineTier: String, CaseIterable, Identifiable {
+    case apple = "Apple built-in model"
+    case downloadable = "Downloadable Qwen3-VL 2B"
     var id: String { rawValue }
 }
 
@@ -40,6 +47,8 @@ final class AppModel: ObservableObject {
 
     @Published var promptText: String { didSet { save(promptText, "promptText") } }
     @Published var backend: Backend { didSet { save(backend.rawValue, "backend") } }
+    @Published var offlineTier: OfflineTier { didSet { save(offlineTier.rawValue, "offlineTier") } }
+    let modelPacks = ModelPackManager()
     @Published var sourceKind: FrameSourceKind {
         didSet {
             save(sourceKind.rawValue, "sourceKind")
@@ -130,6 +139,7 @@ final class AppModel: ObservableObject {
         let d = UserDefaults.standard
         promptText = d.string(forKey: "promptText") ?? ""
         backend = Backend(rawValue: d.string(forKey: "backend") ?? "") ?? .demo
+        offlineTier = OfflineTier(rawValue: d.string(forKey: "offlineTier") ?? "") ?? .apple
         sourceKind = FrameSourceKind(rawValue: d.string(forKey: "sourceKind") ?? "") ?? .mock
         serverHost = d.string(forKey: "serverHost") ?? ""
         serverPort = d.integer(forKey: "serverPort") == 0 ? 3283 : d.integer(forKey: "serverPort")
@@ -178,8 +188,30 @@ final class AppModel: ObservableObject {
     }
 
     var cloudClient: any CloudModelClient {
-        backend == .demo ? DemoCloudClient()
-            : ServerCloudClient(host: serverHost.isEmpty ? "127.0.0.1" : serverHost, port: serverPort, apiKey: apiKey)
+        switch backend {
+        case .demo:
+            return DemoCloudClient()
+        case .server:
+            return ServerCloudClient(host: serverHost.isEmpty ? "127.0.0.1" : serverHost, port: serverPort, apiKey: apiKey)
+        case .offline:
+            switch offlineTier {
+            case .apple:
+                #if canImport(FoundationModels)
+                if #available(iOS 26.0, *) { return AppleLocalClient() }
+                #endif
+                return UnavailableOfflineClient(modelName: "offline:apple-foundation",
+                                                reason: AppleOfflineModel.statusText)
+            case .downloadable:
+                return DownloadableLocalClient(packManager: modelPacks)
+            }
+        }
+    }
+
+    var offlineStatusText: String {
+        switch offlineTier {
+        case .apple: return AppleOfflineModel.statusText
+        case .downloadable: return modelPacks.statusText
+        }
     }
 
     func expectedSourceID(for kind: FrameSourceKind) -> String {
@@ -212,6 +244,10 @@ final class AppModel: ObservableObject {
     func startWatching() {
         let text = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if backend == .offline {
+            log.append(component: "session", event: "offline_mode_started",
+                       detail: "\(offlineTier.rawValue): \(offlineStatusText)")
+        }
         let cooldown = sourceKind == .mock ? max(3, sampleInterval * 1.5) : Classifier.defaultCooldown
         session.start(goalText: text, client: cloudClient, source: makeSource(for: sourceKind),
                       interval: sampleInterval, cooldown: cooldown)
@@ -326,7 +362,10 @@ final class AppModel: ObservableObject {
     }
 
     func testConnection() {
-        guard backend == .server else { connectionStatus = "On-device demo needs no server."; return }
+        guard backend == .server else {
+            connectionStatus = backend == .offline ? offlineStatusText : "On-device demo needs no server."
+            return
+        }
         isTestingConnection = true
         let client = ServerCloudClient(host: serverHost.isEmpty ? "127.0.0.1" : serverHost, port: serverPort, apiKey: apiKey)
         Task {

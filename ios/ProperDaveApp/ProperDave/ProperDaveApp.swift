@@ -22,6 +22,7 @@ struct ProperDaveApp: App {
             .environmentObject(model)
             .environmentObject(model.log)
             .environmentObject(model.session)
+            .environmentObject(model.modelPacks)
             .onAppear {
                 #if DEBUG
                 DebugNotifier.requestAuthorization()
