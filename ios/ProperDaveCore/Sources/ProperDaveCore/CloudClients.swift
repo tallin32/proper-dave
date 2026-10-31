@@ -124,6 +124,13 @@ public struct DemoCloudClient: CloudModelClient {
     }
     public func parseGoal(_ rawText: String) async throws -> GoalContext {
         let lowered = rawText.lowercased()
+        // One-shot question about the current scene (mirrors
+        // FakeCloudModel): answer from the first frame, no watch.
+        let questionMarkers = ["what's in front", "what is in front", "what do you see",
+                               "in front of the camera", "in front of me"]
+        if questionMarkers.contains(where: lowered.contains) {
+            return GoalContext(rawText: rawText, targets: ["the scene in front of the camera"], kind: .question)
+        }
         // Describe intent (mirrors FakeCloudModel): open-ended narration
         // runs on saliency, not targets (TRD-002 §5).
         let describeMarkers = ["what do i see", "tell me what i see", "describe",
@@ -160,6 +167,10 @@ public struct DemoCloudClient: CloudModelClient {
     }
     public func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
         let visible = request.digest.labels.map(\.name) + request.digest.ocrText.map(\.text)
+        if request.goal.kind == .question {
+            if visible.isEmpty { return .noCallout(reason: "not_relevant") }
+            return .callout(text: visible.prefix(3).joined(separator: ", ") + " in view.", relevance: 0.9)
+        }
         if request.goal.kind == .describe {
             // The demo narrates the salient digest plainly; real models
             // summarise. Silence only when nothing is visible at all.

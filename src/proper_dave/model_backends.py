@@ -43,7 +43,9 @@ Reply with JSON only, no prose, in exactly this shape:
 {"kind": "watch"|"question"|"describe", "verbosity": "landmarks"|"notable"|"detailed", "targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
 kind is "describe" for open-ended narration ("tell me what I see as I pass",
 "what's interesting here"), "question" for a one-shot question about the
-current scene, else "watch". For describe, targets are focus categories
+current scene ("what's in front of the camera", "what do you see right
+now") — a question is answered from the first frame and never becomes
+a watch — else "watch". For describe, targets are focus categories
 (shops, building names, people, signs, landmarks) and may be empty;
 verbosity sets how much counts as notable. Otherwise targets are concrete
 visible things: sign text, place names, gate or floor numbers.

@@ -48,6 +48,10 @@ public enum Classifier {
         if exclusions.contains(where: { !tokens($0).intersection(itemTokens).isEmpty }) { return 0 }
         var focusTokens = Set<String>()
         for f in focus { focusTokens.formUnion(tokens(f)) }
+        // A parser that answers "object" to "what's in front of the
+        // camera" has expressed no focus at all; it must not penalise
+        // every real item for failing to match it.
+        focusTokens.subtract(["object", "objects", "thing", "things", "camera", "front", "view", "see"])
         if !itemTokens.intersection(litterTokens).isEmpty {
             return focusTokens.intersection(smallFocusTokens).isEmpty ? 0.05 : 0.85
         }
@@ -109,6 +113,14 @@ public enum Classifier {
         if goal.kind == .describe {
             let (sal, topics) = saliency(digest: digest, gained: gained, goal: goal, announced: announcedTopics)
             let scores = Scores(change: change, relevance: sal, landmark: landmark, topics: topics)
+            if window.isEmpty {
+                // Baseline: the user just asked to be told what is
+                // here. The first digest always escalates; saliency
+                // gates only what follows. Without this, a generic
+                // indoor scene (labels ~0.3) is silent forever.
+                if topics.isEmpty { return (.escalateFrame(confidence: max(sal, 0.5), landmark: landmark), scores) }
+                return (.escalateDigest(confidence: max(sal, 0.5), landmark: landmark), scores)
+            }
             if let since = secondsSinceEscalation, since < cooldown, change < majorChangeThreshold {
                 return (.suppress(reason: "cooldown"), scores)
             }
