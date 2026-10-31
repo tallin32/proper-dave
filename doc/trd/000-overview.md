@@ -83,6 +83,11 @@ all stages ─▶ structured event log (debug builds)
 - A running goal may be **refined** mid-flight (“just the landmarks”,
   “skip shops”) by typed or dictated text; refinement edits the goal
   and never restarts the session (TRD-002 CLS-16).
+- **Conversation mode** (TRD-006) is a separate, explicitly entered
+  posture for talking *with* Dave — call-style screen, retained
+  context, goals startable and refinable mid-conversation — with a
+  wake-word-only state in which bystander speech is discarded
+  on-device and only “Hey Proper Dave” (customisable) is obeyed.
 
 ## 7. Out of scope for the MVP
 
