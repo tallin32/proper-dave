@@ -64,10 +64,13 @@ concept in other tools is addressee detection, and this state is it.
 - **CONV-09** The wake phrase returns Dave to Attentive for the
   conversation; if no turn follows within a short window, he
   re-enters wake-word-only automatically (other people's Daves
-  exist). The phrase is **"Hey " + instance name**, default
-  instance name "Proper Dave", both customisable in Settings
-  (product settings, not Developer Mode, and *not* the TRD-005
-  Codename egg field — same drawer, different socks).
+  exist). The wake phrase is a **free-standing string setting**
+  (default "Hey Proper Dave"), settable to whatever the user
+  wants to shout across a room. It is deliberately decoupled from
+  what the shipped product is eventually named — that naming
+  decision is the owner's, unresolved, and blocks nothing. It is
+  also *not* the TRD-005 Codename egg field (same drawer,
+  different socks).
 - **CONV-10** Hackathon implementation: recognizer-based phrase
   spotting (existing Speech plumbing, local transcript matched and
   discarded). Known limits: recognizer restarts, battery, and the
