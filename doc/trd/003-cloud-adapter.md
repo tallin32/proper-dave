@@ -42,6 +42,18 @@ given the running goal plus a follow-up utterance, it returns the
 patched goal. A refinement that cannot be parsed is reported to the
 user once and the running goal is left exactly as it was.
 
+Goal start also runs a **capability check**: what the task requires
+(input source, temporal span, audio, visual detail) against what the
+selected back end and tier can actually do. A task Dave cannot
+honestly attempt — the canonical case is "describe this movie" put
+to an offline tier: camera frames only, no dialogue, no plot-length
+memory — is refused **once, at goal start, in plain language, with
+the nearest doable alternative offered** ("I can tell you when the
+scene changes, or describe what's on screen when you ask"). Refusal
+never silently upgrades the back end: a user who chose an offline
+tier chose it (CLD-06), and an honest "no" beats two hours of
+confident incompetence.
+
 For describe escalations the model's instruction differs from watch:
 summarise only what is newly notable in this window — named places
 read verbatim, entrances, obstacles in the path — in one or two

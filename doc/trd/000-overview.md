@@ -102,7 +102,14 @@ interfaces keep room for them):
   escalation judgement. The wire contract already reserves `skillID`
   for this (TRD-004 §4); nothing in the MVP implements loading,
   authoring, or trust/sandboxing of skills, and those questions are
-  deliberately undecided here.
+  deliberately undecided here. A second, organic source of skills is
+  recorded in TRD-002 CLS-19: a live session whose accumulated
+  refinements have become a configuration worth keeping may be
+  offered to the user as a saveable, nameable skill. How that
+  authoring works — guided question-and-answer prompts, or Dave
+  drafting a skeleton the user renames and edits, stored locally or
+  server-side — is a decision the owner has explicitly deferred;
+  this paragraph records the door, not the room behind it.
 - **Incident reporting.** Crashes and failures the user cannot solve
   should eventually be sendable as incident reports to the operator
   (TRD-005 §9) — always by explicit user action, never silently.
