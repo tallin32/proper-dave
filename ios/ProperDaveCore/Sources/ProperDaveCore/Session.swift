@@ -70,6 +70,9 @@ public final class SessionController: ObservableObject {
 
     public var onCallout: ((String) -> Void)?
     public var onCriticalError: ((String, String) -> Void)?
+    /// One-line spoken notices that are neither callouts nor errors
+    /// (refinement applied/declined, describe-mode notes).
+    public var onNotice: ((String) -> Void)?
     /// Called when a stream belonging to the *active* source ends while
     /// watching. The app may return a fallback source (e.g. phone camera)
     /// to keep the goal alive — CAP-14 degradation, not an error.
@@ -86,6 +89,7 @@ public final class SessionController: ObservableObject {
     private var cooldown: TimeInterval = Classifier.defaultCooldown
     private var lastEscalationAt: Date?
     private var reportedLandmarks = Set<String>()
+    private var announcedTopics = Set<String>()
     private var window: [FrameDigest] = []
     private var currentSource: (any DigestSource)?
 
@@ -101,7 +105,7 @@ public final class SessionController: ObservableObject {
         self.cooldown = cooldown
         state = .starting
         lastCallout = nil; decisionTrail = []; escalationCount = 0
-        reportedLandmarks = []; window = []; lastEscalationAt = nil
+        reportedLandmarks = []; announcedTopics = []; window = []; lastEscalationAt = nil
         log.append(sessionID: sessionID, component: "session", event: "goal_start_requested", detail: goalText)
         task = Task { [weak self] in
             guard let self else { return }
@@ -112,12 +116,15 @@ public final class SessionController: ObservableObject {
                 onCriticalError?("Could not start watching", "The goal could not be understood: \(error.localizedDescription)")
                 return
             }
-            guard !parsed.targets.isEmpty else {
+            guard parsed.kind == .describe || !parsed.targets.isEmpty else {
                 state = .failed("No targets in that goal.")
                 onCriticalError?("Could not start watching", "No targets were found. Try rephrasing the goal.")
                 return
             }
             goal = parsed
+            // Describe narrates on scene transitions, not frame churn:
+            // a longer floor under the cooldown (CLS-14).
+            if parsed.kind == .describe { self.cooldown = max(self.cooldown, 20) }
             log.append(sessionID: sessionID, component: "session", event: "goal_started",
                        detail: "targets=\(parsed.targets.joined(separator: ","))")
             await consume(source: source, goal: parsed, client: client)
@@ -141,6 +148,29 @@ public final class SessionController: ObservableObject {
         }
     }
 
+    /// CLS-16: patch the running goal in place. Session, source,
+    /// window, cooldown, and announced-topic state all carry over; a
+    /// refinement that cannot be applied changes nothing and says so
+    /// exactly once.
+    public func refineGoal(text: String) {
+        guard let current = goal, let client,
+              state == .watching || state == .pausedForDebug else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let patched = try await client.refine(current: current, refinement: text)
+                goal = patched
+                log.append(sessionID: sessionID, component: "session", event: "goal_refined",
+                           detail: "verbosity=\(patched.verbosity.rawValue) targets=\(patched.targets.joined(separator: ",")) exclusions=\(patched.exclusions.joined(separator: ","))")
+                onNotice?("Goal updated.")
+            } catch {
+                log.append(sessionID: sessionID, component: "session", event: "goal_refine_failed",
+                           detail: text)
+                onNotice?("I couldn't apply that change, so I'm keeping the current goal.")
+            }
+        }
+    }
+
     private func consume(source: any DigestSource, goal: GoalContext, client: any CloudModelClient) async {
         state = .watching
         activeSourceID = source.sourceID
@@ -157,7 +187,8 @@ public final class SessionController: ObservableObject {
             let since = lastEscalationAt.map { Date().timeIntervalSince($0) }
             let (decision, scores) = Classifier.evaluate(
                 digest: digest, window: window, goal: goal, lastCallout: lastCallout,
-                secondsSinceEscalation: since, reportedLandmarks: reportedLandmarks, cooldown: cooldown)
+                secondsSinceEscalation: since, reportedLandmarks: reportedLandmarks,
+                announcedTopics: announcedTopics, cooldown: cooldown)
             log.append(sessionID: sessionID, component: "classifier", event: "decision",
                        detail: "#\(digest.sequence) \(decision.name) change=\(String(format: "%.2f", scores.change)) relevance=\(String(format: "%.2f", scores.relevance)) src=\(digest.sourceID)")
             decisionTrail.append("#\(digest.sequence) \(decision.name)")
@@ -166,6 +197,7 @@ public final class SessionController: ObservableObject {
             if window.count > 5 { window.removeFirst() }
             guard decision.isEscalation else { continue }
             if let landmark = scores.landmark { reportedLandmarks.insert(landmark) }
+            if goal.kind == .describe { announcedTopics.formUnion(scores.topics) }
             lastEscalationAt = Date()
             escalationCount += 1
             let image = source.imageData(for: digest)?.base64EncodedString()

@@ -8,6 +8,7 @@ struct HomeView: View {
     @EnvironmentObject private var session: SessionController
     @StateObject private var dictation = Dictation()
     @FocusState private var goalFocused: Bool
+    @State private var refineText = ""
 
     private let examples = [
         "Tell me when the elevator arrives at my floor",
@@ -134,6 +135,18 @@ struct HomeView: View {
                     Button("Start watching") { model.startWatching() }
                         .buttonStyle(.borderedProminent)
                         .disabled(model.promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            if isWatching {
+                HStack {
+                    TextField("Refine: just the landmarks, skip shops…", text: $refineText)
+                        .focused($goalFocused)
+                        .accessibilityLabel("Refine goal")
+                    Button("Apply") {
+                        model.refineWatching(refineText)
+                        refineText = ""
+                    }
+                    .disabled(refineText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         } header: {
