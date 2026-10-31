@@ -85,6 +85,10 @@ public final class SessionController: ObservableObject {
     private var task: Task<Void, Never>?
     private var sessionID = UUID()
     private var client: (any CloudModelClient)?
+    /// Understanding (parse/refine) split from judging (evaluate):
+    /// the best local understander parses even when escalation
+    /// judgement routes elsewhere by policy (TRD-003 §2).
+    private var parser: (any CloudModelClient)?
     private var interval: TimeInterval = 2
     private var cooldown: TimeInterval = Classifier.defaultCooldown
     private var lastEscalationAt: Date?
@@ -98,9 +102,17 @@ public final class SessionController: ObservableObject {
 
     public func start(goalText: String, client: any CloudModelClient, source: any DigestSource,
                       interval: TimeInterval = 2, cooldown: TimeInterval = Classifier.defaultCooldown) {
+        start(goalText: goalText, parser: client, evaluator: client, source: source,
+              interval: interval, cooldown: cooldown)
+    }
+
+    public func start(goalText: String, parser: any CloudModelClient, evaluator: any CloudModelClient,
+                      source: any DigestSource, interval: TimeInterval = 2,
+                      cooldown: TimeInterval = Classifier.defaultCooldown) {
         stop(confirm: false)
         sessionID = UUID()
-        self.client = client
+        self.client = evaluator
+        self.parser = parser
         self.interval = interval
         self.cooldown = cooldown
         state = .starting
@@ -110,7 +122,7 @@ public final class SessionController: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             let parsed: GoalContext
-            do { parsed = try await client.parseGoal(goalText) }
+            do { parsed = try await parser.parseGoal(goalText) }
             catch {
                 state = .failed(error.localizedDescription)
                 onCriticalError?("Could not start watching", "The goal could not be understood: \(error.localizedDescription)")
@@ -127,7 +139,7 @@ public final class SessionController: ObservableObject {
             if parsed.kind == .describe { self.cooldown = max(self.cooldown, 20) }
             log.append(sessionID: sessionID, component: "session", event: "goal_started",
                        detail: "targets=\(parsed.targets.joined(separator: ","))")
-            await consume(source: source, goal: parsed, client: client)
+            await consume(source: source, goal: parsed, client: evaluator)
         }
     }
 
@@ -153,12 +165,12 @@ public final class SessionController: ObservableObject {
     /// refinement that cannot be applied changes nothing and says so
     /// exactly once.
     public func refineGoal(text: String) {
-        guard let current = goal, let client,
+        guard let current = goal, let parser,
               state == .watching || state == .pausedForDebug else { return }
         Task { [weak self] in
             guard let self else { return }
             do {
-                let patched = try await client.refine(current: current, refinement: text)
+                let patched = try await parser.refine(current: current, refinement: text)
                 goal = patched
                 log.append(sessionID: sessionID, component: "session", event: "goal_refined",
                            detail: "verbosity=\(patched.verbosity.rawValue) targets=\(patched.targets.joined(separator: ",")) exclusions=\(patched.exclusions.joined(separator: ","))")

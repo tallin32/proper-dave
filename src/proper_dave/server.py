@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from .cloud import CloudModelClient, FakeCloudModel
 from .model_backends import ModelUnavailable, model_from_env
-from .models import CalloutResult, EscalationRequest, ParseGoalRequest
+from .models import CalloutResult, EscalationRequest, ParseGoalRequest, RefineGoalRequest
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MIN_INTERVAL_S = 10.0  # API-05 backstop mirroring the client cooldown
@@ -64,6 +64,22 @@ def create_app(client: CloudModelClient | None = None, *, api_key: str | None = 
             log({"component": "cloud", "event": "parse_model_unavailable",
                  "detail": str(exc)[:200]})
             return _err(502, "model_unavailable", "The model could not parse that goal.")
+
+    @app.post("/v1/goals/refine")
+    def refine(body: RefineGoalRequest):
+        if not body.refinement.strip():
+            return _err(400, "bad_request", "Refinement text is empty.")
+        try:
+            return model.refine_goal(body.goal, body.refinement)
+        except ModelUnavailable as exc:
+            log({"component": "cloud", "event": "refine_model_unavailable",
+                 "detail": str(exc)[:200]})
+            return _err(502, "model_unavailable", "The model could not apply that change.")
+        except ValueError:
+            # Unparseable refinement: the running goal stays untouched
+            # and the client says so once (CLS-16).
+            return _err(422, "refinement_unparseable",
+                        "That change could not be understood; the current goal is unchanged.")
 
     @app.post("/v1/escalations")
     def escalate(body: EscalationRequest):

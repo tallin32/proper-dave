@@ -136,6 +136,33 @@ class ChatModelClient:
             exclusions=[str(e).strip() for e in data.get("exclusions") or [] if str(e).strip()],
             progressLandmarks=str(landmarks) if landmarks else None)
 
+    REFINE_SYSTEM = """You patch a blind user's running watch goal from a free-form follow-up.
+Reply with JSON only, in the same shape as goal parsing:
+{"kind": "watch"|"question"|"describe", "verbosity": "landmarks"|"notable"|"detailed", "targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
+Apply the follow-up to the current goal: "just the landmarks" sets
+verbosity landmarks; "skip X" adds an exclusion and drops X from targets;
+"only X" replaces targets; anything unclear leaves the goal unchanged.
+Never invent a different goal."""
+
+    def refine_goal(self, current: GoalContext, refinement: str) -> GoalContext:
+        payload = {"currentGoal": current.model_dump(by_alias=True, mode="json"),
+                   "followUp": refinement}
+        reply = self._chat(self._parse_model, [
+            {"role": "system", "content": self.REFINE_SYSTEM},
+            {"role": "user", "content": json.dumps(payload)}])
+        data = _json_from_reply(reply)
+        kind = data.get("kind") if data.get("kind") in ("watch", "question", "describe") else current.kind
+        verbosity = data.get("verbosity") if data.get("verbosity") in (
+            "landmarks", "notable", "detailed") else current.verbosity
+        landmarks = data.get("progressLandmarks")
+        return GoalContext(
+            rawText=current.raw_text,
+            targets=[str(t).strip() for t in data.get("targets") or [] if str(t).strip()],
+            kind=kind, verbosity=verbosity,
+            exclusions=[str(e).strip() for e in data.get("exclusions") or [] if str(e).strip()],
+            progressLandmarks=str(landmarks) if landmarks else current.progress_landmarks,
+            expiresAt=current.expires_at)
+
     def evaluate(self, request: EscalationRequest) -> CalloutResult:
         digest = request.digest
         scene = {

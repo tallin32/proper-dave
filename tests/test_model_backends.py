@@ -185,3 +185,24 @@ def test_server_maps_model_failures():
     r = c.post("/v1/escalations", json=body)
     assert r.json() == {"kind": "noCallout", "text": None,
                         "relevance": None, "reason": "model_unavailable"}
+
+
+def test_refine_endpoint_patches_and_refuses():
+    app = create_app(client=FakeCloudModel(), min_interval_s=0)
+    c = TestClient(app, raise_server_exceptions=False)
+    goal = {"rawText": "watch shops", "targets": ["shops"], "kind": "describe"}
+    r = c.post("/v1/goals/refine", json={"goal": goal, "refinement": "skip shops"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["exclusions"] == ["shops"] and body["targets"] == []
+    r = c.post("/v1/goals/refine", json={"goal": goal, "refinement": "make it nicer"})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "refinement_unparseable"
+
+
+def test_chat_refine_uses_model_reply():
+    client = make_client(reply({
+        "kind": "describe", "verbosity": "landmarks", "targets": ["shops"],
+        "exclusions": [], "progressLandmarks": None}))
+    current = client.parse_goal("describe the stroll")
+    patched = client.refine_goal(current, "keep it to the big landmarks please")
+    assert patched.verbosity == "landmarks" and patched.raw_text == current.raw_text
