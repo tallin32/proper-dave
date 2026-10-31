@@ -78,6 +78,36 @@ cheapest sufficient tier (system model / downloadable vision model
   no-callout with **one** notice per session (SYS-05), never a
   repeating "still can't" loop.
 
+**Model-selection policy** governs the router. One setting, three
+postures:
+
+- **Auto** (default, and what most users should never need to
+  change): the router picks the cheapest sufficient tier per goal
+  and per escalation, frontier included when reachable.
+- **Highest tier allowed** (a ceiling): router may use anything up
+  to the named tier and nothing above it. This is the cost and
+  privacy control — "never send my frames to a frontier model" and
+  "never bill me for one" are the same sentence here. A task whose
+  profile needs more than the ceiling gets the capability-refusal
+  treatment above: one notice, degraded alternative offered,
+  nothing silent.
+- **Only use** (a pin): exactly one tier, for every call. Mostly a
+  developer/testing instrument ("prove the Qwen tier alone can run
+  this route") and occasionally a user preference. If the pinned
+  tier is unavailable, goals refuse at start rather than substitute.
+
+(Today's Backend picker — Server / Offline / Demo — is the pin
+posture operated by hand; Auto is its generalisation, and the
+picker eventually becomes this policy control.)
+
+The ceiling and pin live behind Developer Mode (TRD-005 §8);
+ordinary Settings shows Auto and, at most, a plain-language
+"Use only on-device models" expression of the ceiling, since cost
+and privacy are user concerns, not developer ones. Every routing
+decision — profile, tier chosen, ceiling/pin applied — is logged
+(INS-01), so a surprising frontier bill can be audited back to the
+escalation that earned it.
+
 For describe escalations the model's instruction differs from watch:
 summarise only what is newly notable in this window — named places
 read verbatim, entrances, obstacles in the path — in one or two
