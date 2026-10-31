@@ -59,6 +59,23 @@ struct LocalGoalOutput {
 }
 
 @available(iOS 26.0, *)
+@Generable(description: "A structured patch to a running goal from a free-form follow-up")
+struct LocalPatchOutput {
+    @Guide(description: "True if the follow-up was understood as a goal change")
+    var understood: Bool
+    @Guide(description: "New verbosity: landmarks, notable, detailed, or empty to keep")
+    var verbosity: String
+    @Guide(description: "Replacement target/focus list, or empty to keep")
+    var setTargets: [String]
+    @Guide(description: "Targets/focus categories to add")
+    var addTargets: [String]
+    @Guide(description: "Targets/focus categories to remove")
+    var removeTargets: [String]
+    @Guide(description: "Things to exclude from now on")
+    var addExclusions: [String]
+}
+
+@available(iOS 26.0, *)
 @Generable(description: "Whether this moment deserves one spoken callout")
 struct LocalEscalationOutput {
     @Guide(description: "True only when speaking now is worthwhile")
@@ -91,6 +108,30 @@ struct FoundationLocalClient: CloudModelClient {
             progressLandmarks: output.progressLandmarks.isEmpty ? nil : output.progressLandmarks,
             kind: GoalKind(rawValue: output.kind) ?? .watch,
             verbosity: Verbosity(rawValue: output.verbosity) ?? .notable)
+    }
+
+    func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+        let prompt = """
+        Current goal: \(current.rawText)
+        Kind: \(current.kind.rawValue), verbosity: \(current.verbosity.rawValue)
+        Targets/focus: \(current.targets.joined(separator: ", "))
+        Exclusions: \(current.exclusions.joined(separator: ", "))
+        Follow-up from the user: \(refinement)
+
+        Convert the follow-up into the structured patch. "Just the
+        landmarks" means verbosity landmarks. "Skip X" excludes X.
+        "Only X" replaces the targets. If the follow-up is not a goal
+        change you can identify, set understood to false.
+        """
+        let output = try await makeSession().respond(to: prompt, generating: LocalPatchOutput.self).content
+        guard output.understood else { throw RefinementError.unparseable }
+        let patch = GoalPatch(
+            verbosity: Verbosity(rawValue: output.verbosity),
+            setTargets: output.setTargets.isEmpty ? nil : output.setTargets,
+            addTargets: output.addTargets, removeTargets: output.removeTargets,
+            addExclusions: output.addExclusions)
+        guard !patch.isEmpty else { throw RefinementError.unparseable }
+        return patch.applied(to: current)
     }
 
     func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
@@ -144,6 +185,13 @@ struct AppleLocalClient: CloudModelClient {
         return try await FoundationLocalClient(modelName: modelName) {
             LanguageModelSession(instructions: "You parse and judge watch goals for a blind user. Prefer silence over low-value speech.")
         }.evaluate(request)
+    }
+
+    func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+        try requireAvailable()
+        return try await FoundationLocalClient(modelName: modelName) {
+            LanguageModelSession(instructions: "You parse and judge watch goals for a blind user. Prefer silence over low-value speech.")
+        }.refine(current: current, refinement: refinement)
     }
 }
 
