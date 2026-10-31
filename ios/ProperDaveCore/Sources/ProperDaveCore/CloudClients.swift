@@ -61,6 +61,46 @@ public struct ServerCloudClient: CloudModelClient {
     }
 }
 
+public enum RefinementError: Error { case unparseable }
+
+public extension CloudModelClient {
+    /// Mid-goal refinement as a goal patch (CLS-16). Default
+    /// deterministic patcher for the common phrasings; a model-backed
+    /// refinement can replace it per client later. Throws
+    /// RefinementError.unparseable when nothing recognisable is asked,
+    /// leaving the caller to keep the running goal untouched.
+    func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+        let low = refinement.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        var patched = current
+        var changed = false
+        if low.contains("landmark") && (low.contains("just") || low.contains("only")) {
+            patched.verbosity = .landmarks; changed = true
+        } else if low.contains("more detail") || low.contains("detailed") || low.contains("everything") {
+            patched.verbosity = .detailed; changed = true
+        } else if low.contains("less detail") || low.contains("fewer") {
+            patched.verbosity = .landmarks; changed = true
+        }
+        for marker in ["skip ", "exclude ", "no more ", "ignore "] where low.hasPrefix(marker) {
+            let item = low.dropFirst(marker.count).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            if !item.isEmpty {
+                patched.exclusions.append(item)
+                patched.targets.removeAll { $0.lowercased() == item }
+                changed = true
+            }
+        }
+        if low.hasPrefix("only ") {
+            let item = low.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            if !item.isEmpty { patched.targets = [item]; changed = true }
+        }
+        for marker in ["include ", "add "] where low.hasPrefix(marker) {
+            let item = low.dropFirst(marker.count).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            if !item.isEmpty { patched.targets.append(item); changed = true }
+        }
+        guard changed else { throw RefinementError.unparseable }
+        return patched
+    }
+}
+
 /// Offline stand-in so the app demos with no server (same behaviour family
 /// as the Python FakeCloudModel).
 public struct DemoCloudClient: CloudModelClient {
@@ -68,6 +108,24 @@ public struct DemoCloudClient: CloudModelClient {
     public init() {}
     public func parseGoal(_ rawText: String) async throws -> GoalContext {
         let lowered = rawText.lowercased()
+        // Describe intent (mirrors FakeCloudModel): open-ended narration
+        // runs on saliency, not targets (TRD-002 §5).
+        let describeMarkers = ["what do i see", "tell me what i see", "describe",
+                               "what's interesting", "what is interesting", "as i pass",
+                               "as i stroll", "as i walk", "people watching",
+                               "people-watching", "what i see"]
+        if describeMarkers.contains(where: lowered.contains) {
+            var focus: [String] = []
+            if lowered.contains("shop") || lowered.contains("store") { focus.append("shops") }
+            if lowered.contains("building name") { focus.append("building names") }
+            if lowered.contains("people") { focus.append("people") }
+            if lowered.contains("sign") { focus.append("signs") }
+            if lowered.contains("landmark") { focus.append("landmarks") }
+            var verbosity: Verbosity = .notable
+            if lowered.contains("landmark") && (lowered.contains("just") || lowered.contains("only")) { verbosity = .landmarks }
+            if lowered.contains("everything") || lowered.contains("detail") { verbosity = .detailed }
+            return GoalContext(rawText: rawText, targets: focus.sorted(), kind: .describe, verbosity: verbosity)
+        }
         var targets: [String] = []
         var progress: String?
         if let match = lowered.range(of: #"gate\s+([a-z]\d{1,3})"#, options: .regularExpression) {

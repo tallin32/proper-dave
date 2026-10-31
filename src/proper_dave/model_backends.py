@@ -40,8 +40,13 @@ MAX_CALLOUT_CHARS = 320  # ~25 spoken seconds (CLD-05); longer is truncated
 
 PARSE_SYSTEM = """You convert a blind user's spoken goal into structured watch targets.
 Reply with JSON only, no prose, in exactly this shape:
-{"targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
-Targets are concrete visible things: sign text, place names, gate or floor numbers.
+{"kind": "watch"|"question"|"describe", "verbosity": "landmarks"|"notable"|"detailed", "targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
+kind is "describe" for open-ended narration ("tell me what I see as I pass",
+"what's interesting here"), "question" for a one-shot question about the
+current scene, else "watch". For describe, targets are focus categories
+(shops, building names, people, signs, landmarks) and may be empty;
+verbosity sets how much counts as notable. Otherwise targets are concrete
+visible things: sign text, place names, gate or floor numbers.
 progressLandmarks names a visible progression to report along the way
 (e.g. "gate numbers") when the goal implies passing intermediate markers, else null."""
 
@@ -53,7 +58,11 @@ Never report mere absence ("still no sign of..."). Never restate the goal.
 A callout is one or two short spoken sentences: concrete, signs read verbatim.
 Reply with JSON only, no prose, in exactly one of these shapes:
 {"kind": "callout", "text": "...", "relevance": 0.0-1.0}
-{"kind": "noCallout", "reason": "not_relevant" | "already_reported" | "low_confidence"}"""
+{"kind": "noCallout", "reason": "not_relevant" | "already_reported" | "low_confidence"}
+For "describe" goals: summarise only what is newly notable (named places
+verbatim, entrances, obstacles), never an exhaustive inventory, never
+transient litter unless verbosity is "detailed", never repeat covered
+topics, and describe people only as aggregate activity."""
 
 
 def _json_from_reply(content: str) -> dict:
@@ -114,12 +123,16 @@ class ChatModelClient:
             {"role": "user", "content": raw_text}])
         data = _json_from_reply(reply)
         targets = [str(t).strip() for t in data.get("targets") or [] if str(t).strip()]
-        if not targets:
-            # Unparseable output means the goal does not start (TRD-003 §2).
-            raise ModelOutputError(f"Goal parse produced no targets: {reply[:120]!r}")
         landmarks = data.get("progressLandmarks")
+        kind = data.get("kind") if data.get("kind") in ("watch", "question", "describe") else "watch"
+        if kind != "describe" and not targets:
+            # Unparseable output means the goal does not start (TRD-003 §2).
+            # Describe goals are the exception: focus categories may be empty.
+            raise ModelOutputError(f"Goal parse produced no targets: {reply[:120]!r}")
+        verbosity = data.get("verbosity") if data.get("verbosity") in (
+            "landmarks", "notable", "detailed") else "notable"
         return GoalContext(
-            rawText=raw_text.strip(), targets=targets,
+            rawText=raw_text.strip(), targets=targets, kind=kind, verbosity=verbosity,
             exclusions=[str(e).strip() for e in data.get("exclusions") or [] if str(e).strip()],
             progressLandmarks=str(landmarks) if landmarks else None)
 
@@ -127,6 +140,8 @@ class ChatModelClient:
         digest = request.digest
         scene = {
             "goal": request.goal.raw_text,
+            "kind": request.goal.kind,
+            "verbosity": request.goal.verbosity,
             "targets": request.goal.targets,
             "exclusions": request.goal.exclusions,
             "labels": [{"name": x.name, "confidence": x.confidence} for x in digest.labels],

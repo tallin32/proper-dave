@@ -42,16 +42,44 @@ public struct FrameDigest: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+public enum GoalKind: String, Codable, Equatable, Sendable {
+    case watch, question, describe
+}
+
+public enum Verbosity: String, Codable, Equatable, Sendable {
+    case landmarks, notable, detailed
+}
+
 public struct GoalContext: Codable, Equatable, Sendable {
     public var rawText: String
+    /// Additive /v1 fields (TRD-004): absent keys decode to the
+    /// pre-describe defaults, so old payloads keep their meaning.
+    public var kind: GoalKind
+    public var verbosity: Verbosity
     public var targets: [String]
     public var exclusions: [String]
     public var progressLandmarks: String?
     public var expiresAt: Date?
     public init(rawText: String, targets: [String], exclusions: [String] = [],
-                progressLandmarks: String? = nil, expiresAt: Date? = nil) {
+                progressLandmarks: String? = nil, expiresAt: Date? = nil,
+                kind: GoalKind = .watch, verbosity: Verbosity = .notable) {
         self.rawText = rawText; self.targets = targets; self.exclusions = exclusions
         self.progressLandmarks = progressLandmarks; self.expiresAt = expiresAt
+        self.kind = kind; self.verbosity = verbosity
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rawText, kind, verbosity, targets, exclusions, progressLandmarks, expiresAt
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rawText = try c.decode(String.self, forKey: .rawText)
+        kind = try c.decodeIfPresent(GoalKind.self, forKey: .kind) ?? .watch
+        verbosity = try c.decodeIfPresent(Verbosity.self, forKey: .verbosity) ?? .notable
+        targets = try c.decode([String].self, forKey: .targets)
+        exclusions = try c.decodeIfPresent([String].self, forKey: .exclusions) ?? []
+        progressLandmarks = try c.decodeIfPresent(String.self, forKey: .progressLandmarks)
+        expiresAt = try c.decodeIfPresent(Date.self, forKey: .expiresAt)
     }
 }
 
