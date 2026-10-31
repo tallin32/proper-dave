@@ -83,6 +83,42 @@ public struct GoalContext: Codable, Equatable, Sendable {
     }
 }
 
+/// A structured goal patch (TRD-003 §2): what a model — never a
+/// keyword table — produces from a free-form refinement utterance.
+public struct GoalPatch: Codable, Equatable, Sendable {
+    public var verbosity: Verbosity?
+    public var setTargets: [String]?
+    public var addTargets: [String] = []
+    public var removeTargets: [String] = []
+    public var addExclusions: [String] = []
+    public init(verbosity: Verbosity? = nil, setTargets: [String]? = nil,
+                addTargets: [String] = [], removeTargets: [String] = [],
+                addExclusions: [String] = []) {
+        self.verbosity = verbosity; self.setTargets = setTargets
+        self.addTargets = addTargets; self.removeTargets = removeTargets
+        self.addExclusions = addExclusions
+    }
+    public var isEmpty: Bool {
+        verbosity == nil && setTargets == nil && addTargets.isEmpty
+            && removeTargets.isEmpty && addExclusions.isEmpty
+    }
+    public func applied(to goal: GoalContext) -> GoalContext {
+        var g = goal
+        if let verbosity { g.verbosity = verbosity }
+        if let setTargets { g.targets = setTargets }
+        let removed = Set(removeTargets.map { $0.lowercased() })
+        g.targets.removeAll { removed.contains($0.lowercased()) }
+        for t in addTargets where !g.targets.contains(where: { $0.lowercased() == t.lowercased() }) {
+            g.targets.append(t)
+        }
+        for e in addExclusions {
+            g.exclusions.append(e)
+            g.targets.removeAll { $0.lowercased() == e.lowercased() }
+        }
+        return g
+    }
+}
+
 public struct EscalationRequest: Codable, Sendable {
     public var sessionID: UUID
     public var goal: GoalContext

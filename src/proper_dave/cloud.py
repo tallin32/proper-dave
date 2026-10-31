@@ -10,10 +10,46 @@ from typing import Protocol
 from .models import CalloutResult, EscalationRequest, GoalContext
 
 
+def apply_refinement(current: GoalContext, refinement: str) -> GoalContext:
+    """Deterministic goal patcher — demo/no-model fallback ONLY
+    (TRD-003 §2). Mirrors GoalPatch.deterministic in Swift."""
+    low = refinement.strip().lower()
+    patched = current.model_copy(deep=True)
+    changed = False
+    if "landmark" in low and ("just" in low or "only" in low):
+        patched.verbosity = "landmarks"; changed = True
+    elif "more detail" in low or "detailed" in low or "everything" in low:
+        patched.verbosity = "detailed"; changed = True
+    elif "less detail" in low or "fewer" in low:
+        patched.verbosity = "landmarks"; changed = True
+    for marker in ("skip ", "exclude ", "no more ", "ignore "):
+        if low.startswith(marker):
+            item = low[len(marker):].strip(" .!?\n\t")
+            if item:
+                patched.exclusions.append(item)
+                patched.targets = [t for t in patched.targets if t.lower() != item]
+                changed = True
+    if low.startswith("only "):
+        item = low[5:].strip(" .!?\n\t")
+        if item:
+            patched.targets = [item]; changed = True
+    for marker in ("include ", "add "):
+        if low.startswith(marker):
+            item = low[len(marker):].strip(" .!?\n\t")
+            if item:
+                patched.targets.append(item); changed = True
+    if not changed:
+        raise ValueError("unparseable refinement")
+    return patched
+
+
 class CloudModelClient(Protocol):
     def parse_goal(self, raw_text: str) -> GoalContext: ...
 
     def evaluate(self, request: EscalationRequest) -> CalloutResult: ...
+
+    def refine_goal(self, current: GoalContext, refinement: str) -> GoalContext:
+        return apply_refinement(current, refinement)
 
 
 class FakeCloudModel:
@@ -21,6 +57,9 @@ class FakeCloudModel:
     contract end-to-end before any real model is wired up."""
 
     model_name = "fake-cloud-model"
+
+    def refine_goal(self, current: GoalContext, refinement: str) -> GoalContext:
+        return apply_refinement(current, refinement)
 
     _DESCRIBE_MARKERS = ("what do i see", "tell me what i see", "describe",
                          "what's interesting", "what is interesting", "as i pass",

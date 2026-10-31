@@ -42,6 +42,19 @@ given the running goal plus a follow-up utterance, it returns the
 patched goal. A refinement that cannot be parsed is reported to the
 user once and the running goal is left exactly as it was.
 
+**No memorised vocabulary (client-side NLU).** Refinement — and
+goal parsing generally — is understood by a model emitting a
+structured `GoalPatch` (set verbosity; add/remove targets; add
+exclusions; or "not understood"), never by keyword matching in
+production paths. Users phrase follow-ups however they speak;
+canonical-phrasing tables are test fixtures, not an interface.
+Understanding is split from judging: parsing and refinement prefer
+the best *local* understander (system model, else downloaded
+model, else the selected back end), while escalation judgement
+routes by the model-selection policy. Keyword patchers may survive
+only as demo/no-model fallbacks, and when they cannot understand,
+Dave asks once rather than guessing.
+
 Goal start also runs a **capability check**: what the task requires
 (input source, temporal span, audio, visual detail) against what the
 selected back end and tier can actually do. A task Dave cannot

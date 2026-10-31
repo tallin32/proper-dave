@@ -252,3 +252,26 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(errors.isEmpty, "errors: \(errors)")
     }
 }
+
+extension ProperDaveCoreTests {
+    func testGoalPatchApplication() {
+        let goal = GoalContext(rawText: "stroll", targets: ["shops", "signs"], kind: .describe)
+        let patched = GoalPatch(verbosity: .landmarks, addExclusions: ["shops"]).applied(to: goal)
+        XCTAssertEqual(patched.verbosity, .landmarks)
+        XCTAssertEqual(patched.targets, ["signs"])
+        XCTAssertEqual(patched.exclusions, ["shops"])
+    }
+
+    @MainActor
+    func testSessionSplitsParserFromEvaluator() async throws {
+        let session = SessionController(log: EventLog())
+        let evaluator = RecordingClient()
+        session.start(goalText: "Tell me when I reach gate B62",
+                      parser: DemoCloudClient(), evaluator: evaluator,
+                      source: ImageSpySource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.5))
+        session.stop()
+        XCTAssertEqual(session.goal?.targets, ["Gate B62"])
+        XCTAssertEqual(evaluator.images, [Data("jpeg".utf8).base64EncodedString()])
+    }
+}

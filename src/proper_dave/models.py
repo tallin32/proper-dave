@@ -84,5 +84,10 @@ class ParseGoalRequest(Wire):
     raw_text: str = Field(alias="rawText")
 
 
+class RefineGoalRequest(Wire):
+    goal: GoalContext
+    refinement: str
+
+
 class ErrorResponse(Wire):
     error: dict
