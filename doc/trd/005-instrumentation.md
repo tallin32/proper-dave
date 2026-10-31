@@ -102,8 +102,9 @@ may be present-but-gated rather than absent.
 - **INS-20** One permitted variation: a **capability refusal**
   (TRD-003 §2 — Dave declining a task beyond the selected tier) is
   not a critical error and does not use INS-09's title. When the egg
-  is active, its title may instead read: “I’m sorry Dave, I’m
-  afraid I can’t do that.” When the egg is inactive the title is
+  is active, its title may instead read: “I’m sorry, I’m afraid
+  Dave can’t do that.” (Dave is the speaker; the reference survives
+  the pronoun change.) When the egg is inactive the title is
   plain (“Beyond the current mode”, or equivalent). The body text
   is identical either way: what was asked, why this mode can't,
   and the nearest alternative. A joke in the title never replaces
