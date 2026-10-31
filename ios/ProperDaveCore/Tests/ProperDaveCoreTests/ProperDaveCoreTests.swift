@@ -275,3 +275,33 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(evaluator.images, [Data("jpeg".utf8).base64EncodedString()])
     }
 }
+
+extension ProperDaveCoreTests {
+    func testDescribeFirstDigestAlwaysEscalatesBaseline() {
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["wrapper"], pixel: 0.6),
+                                         window: [], goal: dgoal())
+        XCTAssertTrue(d.isEscalation)
+    }
+
+    final class AnswerClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "answer"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["the scene in front of the camera"], kind: .question)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .callout(text: "A door and a sign.", relevance: 1)
+        }
+    }
+
+    @MainActor
+    func testQuestionGoalAnswersOnceAndEnds() async throws {
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what's in front of the camera",
+                      client: AnswerClient(), source: ImageSpySource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.6))
+        XCTAssertEqual(spoken, ["A door and a sign."])
+        XCTAssertEqual(session.state, .ended)
+    }
+}

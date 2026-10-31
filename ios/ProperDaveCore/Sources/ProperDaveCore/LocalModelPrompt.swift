@@ -11,7 +11,9 @@ public enum LocalModelPrompt {
         Return only the structured fields requested by the schema.
         kind is "describe" for open-ended narration ("tell me what I see
         as I pass", "what's interesting here"), "question" for a one-shot
-        question about the current scene, otherwise "watch". For describe,
+        question about the current scene ("what's in front of the camera",
+        "what do you see right now") — a question is answered from the
+        first frame and never becomes a watch — otherwise "watch". For describe,
         targets are focus categories (shops, building names, people,
         signs, landmarks) and may be empty; verbosity is landmarks,
         notable, or detailed. Otherwise targets must be concrete visible

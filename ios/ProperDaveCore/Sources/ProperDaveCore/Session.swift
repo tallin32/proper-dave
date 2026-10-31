@@ -128,7 +128,7 @@ public final class SessionController: ObservableObject {
                 onCriticalError?("Could not start watching", "The goal could not be understood: \(error.localizedDescription)")
                 return
             }
-            guard parsed.kind == .describe || !parsed.targets.isEmpty else {
+            guard parsed.kind != .watch || !parsed.targets.isEmpty else {
                 state = .failed("No targets in that goal.")
                 onCriticalError?("Could not start watching", "No targets were found. Try rephrasing the goal.")
                 return
@@ -196,6 +196,34 @@ public final class SessionController: ObservableObject {
             received += 1
             if state == .pausedForDebug { continue }
             guard state == .watching else { break }
+            if goal.kind == .question {
+                // One-shot (TRD-000 §6): answer from the first frame,
+                // then end. Never becomes a watch, never gated by
+                // saliency — the user asked about *this* scene.
+                escalationCount += 1
+                let image = source.imageData(for: digest)?.base64EncodedString()
+                let request = EscalationRequest(sessionID: sessionID, goal: goal, digest: digest,
+                                                recentDigests: [], image: image, lastCallout: nil)
+                log.append(sessionID: sessionID, component: "cloud", event: "question_sent", detail: goal.rawText)
+                do {
+                    switch try await client.evaluate(request) {
+                    case .callout(let text, _):
+                        lastCallout = text
+                        log.append(sessionID: sessionID, component: "speech", event: "callout_spoken", detail: text)
+                        onCallout?(text)
+                    case .noCallout(let reason):
+                        log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
+                        onNotice?("I couldn't tell what's there from this view.")
+                    }
+                } catch {
+                    log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
+                    onNotice?("I couldn't answer that just now.")
+                }
+                log.append(sessionID: sessionID, component: "session", event: "question_answered", detail: "")
+                state = .ended
+                source.stop()
+                return
+            }
             let since = lastEscalationAt.map { Date().timeIntervalSince($0) }
             let (decision, scores) = Classifier.evaluate(
                 digest: digest, window: window, goal: goal, lastCallout: lastCallout,

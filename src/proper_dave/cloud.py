@@ -68,9 +68,17 @@ class FakeCloudModel:
     _FOCUS = (("shop", "shops"), ("store", "shops"), ("building name", "building names"),
               ("people", "people"), ("sign", "signs"), ("landmark", "landmarks"))
 
+    _QUESTION_MARKERS = ("what's in front", "what is in front", "what do you see",
+                         "in front of the camera", "in front of me")
+
     def parse_goal(self, raw_text: str) -> GoalContext:
         text = raw_text.strip()
         low = text.lower()
+        if any(m in low for m in self._QUESTION_MARKERS):
+            # One-shot question about the current scene: answer from
+            # the first frame, do not set up a watch (TRD-000 §6).
+            return GoalContext(rawText=text, targets=["the scene in front of the camera"],
+                               kind="question")
         if any(m in low for m in self._DESCRIBE_MARKERS):
             focus = sorted({label for needle, label in self._FOCUS if needle in low})
             verbosity = "notable"
@@ -96,6 +104,11 @@ class FakeCloudModel:
 
     def evaluate(self, request: EscalationRequest) -> CalloutResult:
         visible = [x.name for x in request.digest.labels] + [x.text for x in request.digest.ocr_text]
+        if request.goal.kind == "question":
+            if visible:
+                return CalloutResult.callout(
+                    ", ".join(visible[:3]) + " in view.", relevance=0.9)
+            return CalloutResult.no_callout("not_relevant")
         if request.goal.kind == "describe":
             # The fake narrates the salient digest plainly; real models
             # summarise. Silence only when nothing is visible at all.
