@@ -174,7 +174,7 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
             guard let self else { return }
             onEvent?("glasses_stream_state", "\(state)")
             if state == .waitingForDevice {
-                onStatus?("Waiting for the glasses to send video — try waking them or pressing their capture button.")
+                onStatus?("Waiting for the glasses to send video. If iOS asks to join the glasses' Wi-Fi network, allow it — the video travels over that link. Also check the glasses are on and worn.")
             }
         }.store(in: tokenBag)
         cam.stream.errorPublisher.listen { [weak self] error in

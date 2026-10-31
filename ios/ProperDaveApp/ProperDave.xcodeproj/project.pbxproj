@@ -293,6 +293,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0000000000000000000032 /* Secrets.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ProperDave/ProperDave.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3P6QN3E763;
@@ -317,6 +318,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0000000000000000000032 /* Secrets.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ProperDave/ProperDave.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3P6QN3E763;

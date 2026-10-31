@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Meta DAT camera frames arrive over the glasses' own Wi-Fi
+	     (DAM transport). Without these signed entitlements the SDK
+	     cannot join that network: the stream sits in waitingForDevice
+	     and dies with deviceNotConnected after ~30 s, silently.
+	     Recommended setup per Meta's DAT iOS integration guide. -->
+	<key>com.apple.developer.networking.HotspotConfiguration</key>
+	<true/>
+	<key>com.apple.developer.networking.wifi-info</key>
+	<true/>
+</dict>
+</plist>
