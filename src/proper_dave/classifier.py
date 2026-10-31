@@ -74,6 +74,10 @@ def _item_score(item: str, is_ocr: bool, focus: list[str], exclusions: list[str]
     focus_tokens: set[str] = set()
     for f in focus:
         focus_tokens |= _tokens(f)
+    # A parser that answers "object" to "what's in front of the
+    # camera" has expressed no focus at all; it must not penalise
+    # every real item for failing to match it.
+    focus_tokens -= {"object", "objects", "thing", "things", "camera", "front", "view", "see"}
     if tokens & _LITTER:
         # Beneath notice on a stroll; the whole point of a floor check.
         return 0.85 if focus_tokens & _SMALL_FOCUS else 0.05
@@ -145,6 +149,13 @@ def _run(digest, window, goal, last_callout, since, reported, announced, cooldow
     if goal.kind == "describe":
         sal, topics = saliency(digest, gained, goal, announced)
         kw = dict(change=change, relevance=sal, saliency=sal, topics=topics)
+        if not window:
+            # Baseline: the user just asked to be told what is here.
+            # The first digest always escalates; saliency gates only
+            # what follows. Without this, a generic indoor scene
+            # (labels scoring ~0.3) is silent forever.
+            kind = "escalateDigest" if topics else "escalateFrame"
+            return Decision(kind, confidence=max(sal, 0.5), **kw)
         if since is not None and since < cooldown_s and change < MAJOR_CHANGE:
             return Decision("suppress", "cooldown", **kw)
         if gained and not (gained - set(announced)):

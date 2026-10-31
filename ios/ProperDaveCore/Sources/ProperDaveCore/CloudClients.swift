@@ -59,45 +59,54 @@ public struct ServerCloudClient: CloudModelClient {
     public func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
         try await send("escalations", body: request)
     }
+    private struct RefineBody: Encodable {
+        let goal: GoalContext
+        let refinement: String
+    }
+    public func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+        try await send("goals/refine", body: RefineBody(goal: current, refinement: refinement))
+    }
 }
 
 public enum RefinementError: Error { case unparseable }
 
-public extension CloudModelClient {
-    /// Mid-goal refinement as a goal patch (CLS-16). Default
-    /// deterministic patcher for the common phrasings; a model-backed
-    /// refinement can replace it per client later. Throws
-    /// RefinementError.unparseable when nothing recognisable is asked,
-    /// leaving the caller to keep the running goal untouched.
-    func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+public extension GoalPatch {
+    /// Keyword fallback for demo/no-model paths ONLY (TRD-003 §2).
+    /// Production understanding is model-backed; this exists so the
+    /// demo can still patch a goal, and its phrase table is a test
+    /// fixture, not a user interface.
+    static func deterministic(refinement: String) -> GoalPatch {
         let low = refinement.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        var patched = current
-        var changed = false
+        var patch = GoalPatch()
         if low.contains("landmark") && (low.contains("just") || low.contains("only")) {
-            patched.verbosity = .landmarks; changed = true
+            patch.verbosity = .landmarks
         } else if low.contains("more detail") || low.contains("detailed") || low.contains("everything") {
-            patched.verbosity = .detailed; changed = true
+            patch.verbosity = .detailed
         } else if low.contains("less detail") || low.contains("fewer") {
-            patched.verbosity = .landmarks; changed = true
+            patch.verbosity = .landmarks
         }
         for marker in ["skip ", "exclude ", "no more ", "ignore "] where low.hasPrefix(marker) {
             let item = low.dropFirst(marker.count).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            if !item.isEmpty {
-                patched.exclusions.append(item)
-                patched.targets.removeAll { $0.lowercased() == item }
-                changed = true
-            }
+            if !item.isEmpty { patch.addExclusions.append(item) }
         }
         if low.hasPrefix("only ") {
             let item = low.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            if !item.isEmpty { patched.targets = [item]; changed = true }
+            if !item.isEmpty { patch.setTargets = [item] }
         }
         for marker in ["include ", "add "] where low.hasPrefix(marker) {
             let item = low.dropFirst(marker.count).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            if !item.isEmpty { patched.targets.append(item); changed = true }
+            if !item.isEmpty { patch.addTargets.append(item) }
         }
-        guard changed else { throw RefinementError.unparseable }
-        return patched
+        return patch
+    }
+}
+
+public extension CloudModelClient {
+    /// Mid-goal refinement (CLS-16). Model-backed in production
+    /// clients (server /v1/goals/refine, local structured output);
+    /// the default refuses rather than guesses.
+    func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+        throw RefinementError.unparseable
     }
 }
 
@@ -106,8 +115,22 @@ public extension CloudModelClient {
 public struct DemoCloudClient: CloudModelClient {
     public var modelName: String { "on-device-demo" }
     public init() {}
+
+    /// Demo path: deterministic patcher is the fallback of last resort.
+    public func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+        let patch = GoalPatch.deterministic(refinement: refinement)
+        guard !patch.isEmpty else { throw RefinementError.unparseable }
+        return patch.applied(to: current)
+    }
     public func parseGoal(_ rawText: String) async throws -> GoalContext {
         let lowered = rawText.lowercased()
+        // One-shot question about the current scene (mirrors
+        // FakeCloudModel): answer from the first frame, no watch.
+        let questionMarkers = ["what's in front", "what is in front", "what do you see",
+                               "in front of the camera", "in front of me"]
+        if questionMarkers.contains(where: lowered.contains) {
+            return GoalContext(rawText: rawText, targets: ["the scene in front of the camera"], kind: .question)
+        }
         // Describe intent (mirrors FakeCloudModel): open-ended narration
         // runs on saliency, not targets (TRD-002 §5).
         let describeMarkers = ["what do i see", "tell me what i see", "describe",
@@ -144,6 +167,10 @@ public struct DemoCloudClient: CloudModelClient {
     }
     public func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
         let visible = request.digest.labels.map(\.name) + request.digest.ocrText.map(\.text)
+        if request.goal.kind == .question {
+            if visible.isEmpty { return .noCallout(reason: "not_relevant") }
+            return .callout(text: visible.prefix(3).joined(separator: ", ") + " in view.", relevance: 0.9)
+        }
         if request.goal.kind == .describe {
             // The demo narrates the salient digest plainly; real models
             // summarise. Silence only when nothing is visible at all.

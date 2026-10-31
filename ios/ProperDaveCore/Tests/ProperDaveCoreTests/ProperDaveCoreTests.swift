@@ -252,3 +252,56 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(errors.isEmpty, "errors: \(errors)")
     }
 }
+
+extension ProperDaveCoreTests {
+    func testGoalPatchApplication() {
+        let goal = GoalContext(rawText: "stroll", targets: ["shops", "signs"], kind: .describe)
+        let patched = GoalPatch(verbosity: .landmarks, addExclusions: ["shops"]).applied(to: goal)
+        XCTAssertEqual(patched.verbosity, .landmarks)
+        XCTAssertEqual(patched.targets, ["signs"])
+        XCTAssertEqual(patched.exclusions, ["shops"])
+    }
+
+    @MainActor
+    func testSessionSplitsParserFromEvaluator() async throws {
+        let session = SessionController(log: EventLog())
+        let evaluator = RecordingClient()
+        session.start(goalText: "Tell me when I reach gate B62",
+                      parser: DemoCloudClient(), evaluator: evaluator,
+                      source: ImageSpySource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.5))
+        session.stop()
+        XCTAssertEqual(session.goal?.targets, ["Gate B62"])
+        XCTAssertEqual(evaluator.images, [Data("jpeg".utf8).base64EncodedString()])
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testDescribeFirstDigestAlwaysEscalatesBaseline() {
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["wrapper"], pixel: 0.6),
+                                         window: [], goal: dgoal())
+        XCTAssertTrue(d.isEscalation)
+    }
+
+    final class AnswerClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "answer"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["the scene in front of the camera"], kind: .question)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .callout(text: "A door and a sign.", relevance: 1)
+        }
+    }
+
+    @MainActor
+    func testQuestionGoalAnswersOnceAndEnds() async throws {
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what's in front of the camera",
+                      client: AnswerClient(), source: ImageSpySource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.6))
+        XCTAssertEqual(spoken, ["A door and a sign."])
+        XCTAssertEqual(session.state, .ended)
+    }
+}

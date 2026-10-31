@@ -43,7 +43,9 @@ Reply with JSON only, no prose, in exactly this shape:
 {"kind": "watch"|"question"|"describe", "verbosity": "landmarks"|"notable"|"detailed", "targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
 kind is "describe" for open-ended narration ("tell me what I see as I pass",
 "what's interesting here"), "question" for a one-shot question about the
-current scene, else "watch". For describe, targets are focus categories
+current scene ("what's in front of the camera", "what do you see right
+now") — a question is answered from the first frame and never becomes
+a watch — else "watch". For describe, targets are focus categories
 (shops, building names, people, signs, landmarks) and may be empty;
 verbosity sets how much counts as notable. Otherwise targets are concrete
 visible things: sign text, place names, gate or floor numbers.
@@ -135,6 +137,33 @@ class ChatModelClient:
             rawText=raw_text.strip(), targets=targets, kind=kind, verbosity=verbosity,
             exclusions=[str(e).strip() for e in data.get("exclusions") or [] if str(e).strip()],
             progressLandmarks=str(landmarks) if landmarks else None)
+
+    REFINE_SYSTEM = """You patch a blind user's running watch goal from a free-form follow-up.
+Reply with JSON only, in the same shape as goal parsing:
+{"kind": "watch"|"question"|"describe", "verbosity": "landmarks"|"notable"|"detailed", "targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
+Apply the follow-up to the current goal: "just the landmarks" sets
+verbosity landmarks; "skip X" adds an exclusion and drops X from targets;
+"only X" replaces targets; anything unclear leaves the goal unchanged.
+Never invent a different goal."""
+
+    def refine_goal(self, current: GoalContext, refinement: str) -> GoalContext:
+        payload = {"currentGoal": current.model_dump(by_alias=True, mode="json"),
+                   "followUp": refinement}
+        reply = self._chat(self._parse_model, [
+            {"role": "system", "content": self.REFINE_SYSTEM},
+            {"role": "user", "content": json.dumps(payload)}])
+        data = _json_from_reply(reply)
+        kind = data.get("kind") if data.get("kind") in ("watch", "question", "describe") else current.kind
+        verbosity = data.get("verbosity") if data.get("verbosity") in (
+            "landmarks", "notable", "detailed") else current.verbosity
+        landmarks = data.get("progressLandmarks")
+        return GoalContext(
+            rawText=current.raw_text,
+            targets=[str(t).strip() for t in data.get("targets") or [] if str(t).strip()],
+            kind=kind, verbosity=verbosity,
+            exclusions=[str(e).strip() for e in data.get("exclusions") or [] if str(e).strip()],
+            progressLandmarks=str(landmarks) if landmarks else current.progress_landmarks,
+            expiresAt=current.expires_at)
 
     def evaluate(self, request: EscalationRequest) -> CalloutResult:
         digest = request.digest

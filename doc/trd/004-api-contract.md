@@ -26,6 +26,7 @@ returns callouts. It is deliberately boring.
 |---|---|---|
 | `GET /v1/health` | — | `{status, model}` — backs the Settings test button |
 | `POST /v1/goals/parse` | `{rawText}` | `GoalContext` (TRD-002) |
+| `POST /v1/goals/refine` | `{goal: GoalContext, refinement}` | `GoalContext` (patched; TRD-002 CLS-16, TRD-003 §2) |
 | `POST /v1/escalations` | `EscalationRequest` (TRD-003) | `CalloutResult` (TRD-003) |
 
 - Images, when attached, travel base64-in-JSON for the MVP (recorded

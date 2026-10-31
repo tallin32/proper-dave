@@ -111,3 +111,14 @@ def test_fake_parser_classifies_describe():
     assert g.kind == "describe" and g.targets == ["shops"] and g.verbosity == "notable"
     g2 = FakeCloudModel().parse_goal("Describe what's interesting, just the landmarks")
     assert g2.kind == "describe" and g2.verbosity == "landmarks"
+
+
+def test_describe_first_digest_always_escalates_baseline():
+    d = evaluate(digest(labels=["wrapper"], pixel=0.6), [], dgoal())
+    assert d.kind in ("escalateDigest", "escalateFrame")
+
+
+def test_fake_parser_classifies_front_of_camera_as_question():
+    from proper_dave.cloud import FakeCloudModel
+    g = FakeCloudModel().parse_goal("Tell me what's in front of the camera.")
+    assert g.kind == "question"

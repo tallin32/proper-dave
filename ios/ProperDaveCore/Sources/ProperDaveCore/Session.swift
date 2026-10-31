@@ -85,6 +85,10 @@ public final class SessionController: ObservableObject {
     private var task: Task<Void, Never>?
     private var sessionID = UUID()
     private var client: (any CloudModelClient)?
+    /// Understanding (parse/refine) split from judging (evaluate):
+    /// the best local understander parses even when escalation
+    /// judgement routes elsewhere by policy (TRD-003 §2).
+    private var parser: (any CloudModelClient)?
     private var interval: TimeInterval = 2
     private var cooldown: TimeInterval = Classifier.defaultCooldown
     private var lastEscalationAt: Date?
@@ -98,9 +102,17 @@ public final class SessionController: ObservableObject {
 
     public func start(goalText: String, client: any CloudModelClient, source: any DigestSource,
                       interval: TimeInterval = 2, cooldown: TimeInterval = Classifier.defaultCooldown) {
+        start(goalText: goalText, parser: client, evaluator: client, source: source,
+              interval: interval, cooldown: cooldown)
+    }
+
+    public func start(goalText: String, parser: any CloudModelClient, evaluator: any CloudModelClient,
+                      source: any DigestSource, interval: TimeInterval = 2,
+                      cooldown: TimeInterval = Classifier.defaultCooldown) {
         stop(confirm: false)
         sessionID = UUID()
-        self.client = client
+        self.client = evaluator
+        self.parser = parser
         self.interval = interval
         self.cooldown = cooldown
         state = .starting
@@ -110,13 +122,13 @@ public final class SessionController: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             let parsed: GoalContext
-            do { parsed = try await client.parseGoal(goalText) }
+            do { parsed = try await parser.parseGoal(goalText) }
             catch {
                 state = .failed(error.localizedDescription)
                 onCriticalError?("Could not start watching", "The goal could not be understood: \(error.localizedDescription)")
                 return
             }
-            guard parsed.kind == .describe || !parsed.targets.isEmpty else {
+            guard parsed.kind != .watch || !parsed.targets.isEmpty else {
                 state = .failed("No targets in that goal.")
                 onCriticalError?("Could not start watching", "No targets were found. Try rephrasing the goal.")
                 return
@@ -127,7 +139,7 @@ public final class SessionController: ObservableObject {
             if parsed.kind == .describe { self.cooldown = max(self.cooldown, 20) }
             log.append(sessionID: sessionID, component: "session", event: "goal_started",
                        detail: "targets=\(parsed.targets.joined(separator: ","))")
-            await consume(source: source, goal: parsed, client: client)
+            await consume(source: source, goal: parsed, client: evaluator)
         }
     }
 
@@ -153,12 +165,12 @@ public final class SessionController: ObservableObject {
     /// refinement that cannot be applied changes nothing and says so
     /// exactly once.
     public func refineGoal(text: String) {
-        guard let current = goal, let client,
+        guard let current = goal, let parser,
               state == .watching || state == .pausedForDebug else { return }
         Task { [weak self] in
             guard let self else { return }
             do {
-                let patched = try await client.refine(current: current, refinement: text)
+                let patched = try await parser.refine(current: current, refinement: text)
                 goal = patched
                 log.append(sessionID: sessionID, component: "session", event: "goal_refined",
                            detail: "verbosity=\(patched.verbosity.rawValue) targets=\(patched.targets.joined(separator: ",")) exclusions=\(patched.exclusions.joined(separator: ","))")
@@ -184,6 +196,34 @@ public final class SessionController: ObservableObject {
             received += 1
             if state == .pausedForDebug { continue }
             guard state == .watching else { break }
+            if goal.kind == .question {
+                // One-shot (TRD-000 §6): answer from the first frame,
+                // then end. Never becomes a watch, never gated by
+                // saliency — the user asked about *this* scene.
+                escalationCount += 1
+                let image = source.imageData(for: digest)?.base64EncodedString()
+                let request = EscalationRequest(sessionID: sessionID, goal: goal, digest: digest,
+                                                recentDigests: [], image: image, lastCallout: nil)
+                log.append(sessionID: sessionID, component: "cloud", event: "question_sent", detail: goal.rawText)
+                do {
+                    switch try await client.evaluate(request) {
+                    case .callout(let text, _):
+                        lastCallout = text
+                        log.append(sessionID: sessionID, component: "speech", event: "callout_spoken", detail: text)
+                        onCallout?(text)
+                    case .noCallout(let reason):
+                        log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
+                        onNotice?("I couldn't tell what's there from this view.")
+                    }
+                } catch {
+                    log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
+                    onNotice?("I couldn't answer that just now.")
+                }
+                log.append(sessionID: sessionID, component: "session", event: "question_answered", detail: "")
+                state = .ended
+                source.stop()
+                return
+            }
             let since = lastEscalationAt.map { Date().timeIntervalSince($0) }
             let (decision, scores) = Classifier.evaluate(
                 digest: digest, window: window, goal: goal, lastCallout: lastCallout,
