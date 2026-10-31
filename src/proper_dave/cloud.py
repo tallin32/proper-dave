@@ -57,6 +57,13 @@ class FakeCloudModel:
 
     def evaluate(self, request: EscalationRequest) -> CalloutResult:
         visible = [x.name for x in request.digest.labels] + [x.text for x in request.digest.ocr_text]
+        if request.goal.kind == "describe":
+            # The fake narrates the salient digest plainly; real models
+            # summarise. Silence only when nothing is visible at all.
+            if visible:
+                return CalloutResult.callout(
+                    ", ".join(visible[:3]) + " in view.", relevance=0.7)
+            return CalloutResult.no_callout("not_relevant")
         for target in request.goal.targets:
             needle = target.lower().removeprefix("gate ").strip()
             for item in visible:

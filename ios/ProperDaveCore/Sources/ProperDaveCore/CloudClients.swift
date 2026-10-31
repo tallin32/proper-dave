@@ -144,6 +144,12 @@ public struct DemoCloudClient: CloudModelClient {
     }
     public func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
         let visible = request.digest.labels.map(\.name) + request.digest.ocrText.map(\.text)
+        if request.goal.kind == .describe {
+            // The demo narrates the salient digest plainly; real models
+            // summarise. Silence only when nothing is visible at all.
+            if visible.isEmpty { return .noCallout(reason: "not_relevant") }
+            return .callout(text: visible.prefix(3).joined(separator: ", ") + " in view.", relevance: 0.7)
+        }
         for target in request.goal.targets {
             let needle = target.lowercased().replacingOccurrences(of: "gate ", with: "").trimmingCharacters(in: .whitespaces)
             if let hit = visible.first(where: { $0.lowercased().contains(needle) }), !needle.isEmpty {
