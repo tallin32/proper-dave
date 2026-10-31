@@ -59,6 +59,10 @@ public enum LocalModelPrompt {
               Silence is preferred. Never report that a target is merely absent.
               Do not repeat the last callout. A callout must be one or two short,
               concrete sentences, reading signs verbatim where possible.
+              On a goal's first escalation, a current reading that directly
+              bears on the target — a thermostat at 72 toward a goal of 75,
+              an earlier gate number on the way to yours — is worth one
+              callout as a baseline. Mere absence of the target is not.
               """)
         """
     }
