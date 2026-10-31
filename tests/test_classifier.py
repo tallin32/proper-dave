@@ -60,3 +60,54 @@ def test_progress_gate_reported_once():
 
 def test_malformed_input_fails_closed():
     assert evaluate(None, [], goal(["x"])).reason == "classifierError"
+
+
+def dgoal(targets=(), verbosity="notable"):
+    return GoalContext(rawText="describe", targets=list(targets),
+                       kind="describe", verbosity=verbosity)
+
+
+def test_describe_storefront_escalates():
+    d = evaluate(digest(labels=["storefront"], ocr=["Verizon"], pixel=0.6),
+                 [digest(ocr=["Concourse B"])], dgoal())
+    assert d.kind == "escalateDigest" and "verizon" in d.topics
+
+
+def test_describe_candy_wrapper_is_beneath_notice():
+    d = evaluate(digest(labels=["wrapper"], pixel=0.6),
+                 [digest(ocr=["Fifth Avenue"])], dgoal())
+    assert (d.kind, d.reason) == ("suppress", "notSalient")
+
+
+def test_describe_wrapper_matters_on_a_floor_check():
+    d = evaluate(digest(labels=["wrapper"], pixel=0.6),
+                 [digest(labels=["floor"], pixel=0.1)],
+                 dgoal(["small items on the floor"]))
+    assert d.kind == "escalateDigest" and d.saliency == 0.85
+
+
+def test_describe_announced_topic_not_repeated():
+    d = evaluate(digest(labels=["storefront"], ocr=["Verizon"], pixel=0.6),
+                 [digest(ocr=["Concourse B"])], dgoal(),
+                 announced=frozenset({"verizon", "storefront"}))
+    assert (d.kind, d.reason) == ("suppress", "alreadyAnnounced")
+
+
+def test_describe_people_watching_focus():
+    d = evaluate(digest(labels=["person"], pixel=0.6),
+                 [digest(labels=["platform"])], dgoal(["people"]))
+    assert d.kind == "escalateDigest"
+
+
+def test_describe_landmarks_verbosity_is_stricter():
+    d = evaluate(digest(ocr=["Bakery"], pixel=0.6),
+                 [digest(ocr=["Street"])], dgoal(verbosity="landmarks"))
+    assert (d.kind, d.reason) == ("suppress", "notSalient")
+
+
+def test_fake_parser_classifies_describe():
+    from proper_dave.cloud import FakeCloudModel
+    g = FakeCloudModel().parse_goal("Tell me what I see as I pass. Watch the shops")
+    assert g.kind == "describe" and g.targets == ["shops"] and g.verbosity == "notable"
+    g2 = FakeCloudModel().parse_goal("Describe what's interesting, just the landmarks")
+    assert g2.kind == "describe" and g2.verbosity == "landmarks"

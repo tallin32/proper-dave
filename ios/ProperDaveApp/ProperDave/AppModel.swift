@@ -165,6 +165,7 @@ final class AppModel: ObservableObject {
         eggWasActive = codename.trimmingCharacters(in: .whitespaces) == "Proper Dave"
         #endif
         session.onCallout = { [weak self] text in self?.speaker.speak(text) }
+        session.onNotice = { [weak self] text in self?.speaker.speak(text) }
         session.onCriticalError = { [weak self] title, description in
             self?.presentCritical(title: title, description: description, isTerminal: true)
         }
@@ -257,6 +258,13 @@ final class AppModel: ObservableObject {
     func stopWatching() {
         session.stop()
         speaker.speak("Stopped.")
+    }
+
+    /// CLS-16 refinement: patch the running goal, never restart it.
+    func refineWatching(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        session.refineGoal(text: trimmed)
     }
 
     /// CAP-13/14: available at any time — idle, mid-goal, whenever. On

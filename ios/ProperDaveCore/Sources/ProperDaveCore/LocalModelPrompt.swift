@@ -9,8 +9,14 @@ public enum LocalModelPrompt {
         """
         Convert this request from a blind user into watch targets.
         Return only the structured fields requested by the schema.
-        Targets must be concrete visible things: sign text, place names,
-        gate/floor numbers, objects, or progress markers.
+        kind is "describe" for open-ended narration ("tell me what I see
+        as I pass", "what's interesting here"), "question" for a one-shot
+        question about the current scene, otherwise "watch". For describe,
+        targets are focus categories (shops, building names, people,
+        signs, landmarks) and may be empty; verbosity is landmarks,
+        notable, or detailed. Otherwise targets must be concrete visible
+        things: sign text, place names, gate/floor numbers, objects, or
+        progress markers.
 
         Request: \(rawText)
         """
@@ -27,6 +33,8 @@ public enum LocalModelPrompt {
             .joined(separator: " -> ")
         return """
         Goal: \(request.goal.rawText)
+        Goal kind: \(request.goal.kind.rawValue) (verbosity: \(request.goal.verbosity.rawValue))
+        \(request.goal.kind == .describe ? "This is a describe goal: summarise only what is newly notable — named places read verbatim, entrances, obstacles in the path. No exhaustive inventory, no transient litter unless verbosity is detailed, no repeating topics already covered. Describe people only as aggregate activity, never identifying individuals." : "")
         Targets: \(request.goal.targets.joined(separator: ", "))
         Exclusions: \(request.goal.exclusions.joined(separator: ", "))
         Machine labels: \(labels.isEmpty ? "none" : labels)

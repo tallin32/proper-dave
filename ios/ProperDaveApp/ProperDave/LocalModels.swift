@@ -46,7 +46,11 @@ enum AppleOfflineModel {
 @available(iOS 26.0, *)
 @Generable(description: "Structured watch targets parsed from a blind user's request")
 struct LocalGoalOutput {
-    @Guide(description: "Concrete visible targets: signs, names, numbers, objects")
+    @Guide(description: "watch, question, or describe")
+    var kind: String
+    @Guide(description: "landmarks, notable, or detailed (describe goals)")
+    var verbosity: String
+    @Guide(description: "Concrete visible targets, or focus categories for describe goals")
     var targets: [String]
     @Guide(description: "Things explicitly excluded by the user")
     var exclusions: [String]
@@ -79,11 +83,14 @@ struct FoundationLocalClient: CloudModelClient {
         let output = try await makeSession().respond(
             to: LocalModelPrompt.goalParse(rawText), generating: LocalGoalOutput.self).content
         let targets = output.targets.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        guard !targets.isEmpty else { throw OfflineModelError.emptyGoalParse }
+        let kind = GoalKind(rawValue: output.kind) ?? .watch
+        guard kind == .describe || !targets.isEmpty else { throw OfflineModelError.emptyGoalParse }
         return GoalContext(
             rawText: rawText, targets: targets,
             exclusions: output.exclusions.filter { !$0.isEmpty },
-            progressLandmarks: output.progressLandmarks.isEmpty ? nil : output.progressLandmarks)
+            progressLandmarks: output.progressLandmarks.isEmpty ? nil : output.progressLandmarks,
+            kind: GoalKind(rawValue: output.kind) ?? .watch,
+            verbosity: Verbosity(rawValue: output.verbosity) ?? .notable)
     }
 
     func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {

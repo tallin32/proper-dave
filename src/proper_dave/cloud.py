@@ -22,9 +22,25 @@ class FakeCloudModel:
 
     model_name = "fake-cloud-model"
 
+    _DESCRIBE_MARKERS = ("what do i see", "tell me what i see", "describe",
+                         "what's interesting", "what is interesting", "as i pass",
+                         "as i stroll", "as i walk", "people watching",
+                         "people-watching", "what i see")
+    _FOCUS = (("shop", "shops"), ("store", "shops"), ("building name", "building names"),
+              ("people", "people"), ("sign", "signs"), ("landmark", "landmarks"))
+
     def parse_goal(self, raw_text: str) -> GoalContext:
         text = raw_text.strip()
         low = text.lower()
+        if any(m in low for m in self._DESCRIBE_MARKERS):
+            focus = sorted({label for needle, label in self._FOCUS if needle in low})
+            verbosity = "notable"
+            if "landmark" in low and ("just" in low or "only" in low):
+                verbosity = "landmarks"
+            if "everything" in low or "detail" in low:
+                verbosity = "detailed"
+            return GoalContext(rawText=text, targets=focus,
+                               kind="describe", verbosity=verbosity)
         targets: list[str] = []
         progress = None
         gate = re.search(r"\bgate\s+([a-z]\d{1,3})\b", low)
@@ -41,6 +57,13 @@ class FakeCloudModel:
 
     def evaluate(self, request: EscalationRequest) -> CalloutResult:
         visible = [x.name for x in request.digest.labels] + [x.text for x in request.digest.ocr_text]
+        if request.goal.kind == "describe":
+            # The fake narrates the salient digest plainly; real models
+            # summarise. Silence only when nothing is visible at all.
+            if visible:
+                return CalloutResult.callout(
+                    ", ".join(visible[:3]) + " in view.", relevance=0.7)
+            return CalloutResult.no_callout("not_relevant")
         for target in request.goal.targets:
             needle = target.lower().removeprefix("gate ").strip()
             for item in visible:

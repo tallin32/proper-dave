@@ -45,6 +45,10 @@ class FrameDigest(Wire):
 
 class GoalContext(Wire):
     raw_text: str = Field(alias="rawText")
+    # Additive /v1 fields (TRD-004): older payloads omit them and mean
+    # exactly what they meant before describe goals existed.
+    kind: Literal["watch", "question", "describe"] = "watch"
+    verbosity: Literal["landmarks", "notable", "detailed"] = "notable"
     targets: list[str]
     exclusions: list[str] = []
     progress_landmarks: str | None = Field(default=None, alias="progressLandmarks")

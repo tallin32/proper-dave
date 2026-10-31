@@ -181,3 +181,74 @@ final class ProperDaveCoreTests: XCTestCase {
         XCTAssertTrue(callouts.contains { $0.contains("B62") }, "callouts: \(callouts)")
     }
 }
+
+extension ProperDaveCoreTests {
+    private func dgoal(targets: [String] = [], verbosity: Verbosity = .notable) -> GoalContext {
+        GoalContext(rawText: "describe", targets: targets, kind: .describe, verbosity: verbosity)
+    }
+    func testDescribeStorefrontEscalates() {
+        let (d, s) = Classifier.evaluate(digest: digest(labels: ["storefront"], ocr: ["Verizon"], pixel: 0.6),
+                                         window: [digest(ocr: ["Concourse B"])], goal: dgoal())
+        XCTAssertTrue(d.isEscalation); XCTAssertTrue(s.topics.contains("verizon"))
+    }
+    func testDescribeCandyWrapperIsBeneathNotice() {
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["wrapper"], pixel: 0.6),
+                                         window: [digest(ocr: ["Fifth Avenue"])], goal: dgoal())
+        XCTAssertEqual(d, .suppress(reason: "notSalient"))
+    }
+    func testDescribeWrapperMattersOnFloorCheck() {
+        let (d, s) = Classifier.evaluate(digest: digest(labels: ["wrapper"], pixel: 0.6),
+                                         window: [digest(labels: ["floor"], pixel: 0.1)],
+                                         goal: dgoal(targets: ["small items on the floor"]))
+        XCTAssertTrue(d.isEscalation); XCTAssertEqual(s.relevance, 0.85)
+    }
+    func testDescribeAnnouncedTopicNotRepeated() {
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["storefront"], ocr: ["Verizon"], pixel: 0.6),
+                                         window: [digest(ocr: ["Concourse B"])], goal: dgoal(),
+                                         announcedTopics: ["verizon", "storefront"])
+        XCTAssertEqual(d, .suppress(reason: "alreadyAnnounced"))
+    }
+    func testDescribePeopleWatchingFocus() {
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["person"], pixel: 0.6),
+                                         window: [digest(labels: ["platform"])], goal: dgoal(targets: ["people"]))
+        XCTAssertTrue(d.isEscalation)
+    }
+    func testDescribeLandmarksVerbosityIsStricter() {
+        let (d, _) = Classifier.evaluate(digest: digest(ocr: ["Bakery"], pixel: 0.6),
+                                         window: [digest(ocr: ["Street"])], goal: dgoal(verbosity: .landmarks))
+        XCTAssertEqual(d, .suppress(reason: "notSalient"))
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testRefinementPatchesGoal() async throws {
+        let client = DemoCloudClient()
+        let base = GoalContext(rawText: "describe", targets: ["shops"], kind: .describe)
+        let p1 = try await client.refine(current: base, refinement: "just the landmarks")
+        XCTAssertEqual(p1.verbosity, .landmarks)
+        let p2 = try await client.refine(current: base, refinement: "skip shops")
+        XCTAssertEqual(p2.exclusions, ["shops"]); XCTAssertTrue(p2.targets.isEmpty)
+        do {
+            _ = try await client.refine(current: base, refinement: "make it nicer somehow")
+            XCTFail("unparseable refinement must throw")
+        } catch { /* expected: running goal stays untouched */ }
+    }
+
+    func testDemoParserClassifiesDescribe() async throws {
+        let g = try await DemoCloudClient().parseGoal("Tell me what I see as I pass. Watch the shops")
+        XCTAssertEqual(g.kind, .describe); XCTAssertEqual(g.targets, ["shops"])
+    }
+
+    @MainActor
+    func testDescribeGoalStartsWithoutTargets() async throws {
+        let session = SessionController(log: EventLog())
+        var errors: [String] = []
+        session.onCriticalError = { title, _ in errors.append(title) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: DemoCloudClient(), source: MockDigestSource(), interval: 0.05, cooldown: 0.08)
+        try await Task.sleep(for: .seconds(0.6))
+        session.stop()
+        XCTAssertEqual(session.goal?.kind, .describe)
+        XCTAssertTrue(errors.isEmpty, "errors: \(errors)")
+    }
+}
