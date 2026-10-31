@@ -64,7 +64,11 @@ Reply with JSON only, no prose, in exactly one of these shapes:
 For "describe" goals: summarise only what is newly notable (named places
 verbatim, entrances, obstacles), never an exhaustive inventory, never
 transient litter unless verbosity is "detailed", never repeat covered
-topics, and describe people only as aggregate activity."""
+topics, and describe people only as aggregate activity.
+For "question" goals: the user asked a direct question about this scene
+and is waiting for an answer. Answer it in the callout text. The silence
+preference above does NOT apply; return noCallout only if the scene data
+is genuinely insufficient to say anything truthful."""
 
 
 def _json_from_reply(content: str) -> dict:

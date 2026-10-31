@@ -45,10 +45,21 @@ public enum LocalModelPrompt {
         Last callout: \(request.lastCallout ?? "none")
         Attached image: \(request.image == nil ? "no — judge only from the labels and OCR above; do not invent visual details" : "yes")
 
-        Decide whether this exact moment deserves one short spoken callout.
-        Silence is preferred. Never report that a target is merely absent.
-        Do not repeat the last callout. A callout must be one or two short,
-        concrete sentences, reading signs verbatim where possible.
+        \(request.goal.kind == .question
+            ? """
+              DIRECT QUESTION: the user asked about this scene and is waiting
+              for an answer. Answer it directly in one or two short, concrete
+              sentences, describing what is visible (reading signs verbatim).
+              The silence preference for unprompted narration does NOT apply
+              here. Return noCallout only if the labels, OCR, and any attached
+              image are genuinely insufficient to say anything truthful.
+              """
+            : """
+              Decide whether this exact moment deserves one short spoken callout.
+              Silence is preferred. Never report that a target is merely absent.
+              Do not repeat the last callout. A callout must be one or two short,
+              concrete sentences, reading signs verbatim where possible.
+              """)
         """
     }
 }

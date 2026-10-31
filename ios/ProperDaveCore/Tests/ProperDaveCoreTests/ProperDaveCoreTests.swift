@@ -305,3 +305,21 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(session.state, .ended)
     }
 }
+
+extension ProperDaveCoreTests {
+    func testQuestionPromptDemandsAnAnswer() {
+        let goal = GoalContext(rawText: "Tell me what's in front of the camera",
+                               targets: ["the scene in front of the camera"], kind: .question)
+        let request = EscalationRequest(sessionID: UUID(), goal: goal,
+                                        digest: digest(labels: ["fan"], pixel: 0.5), recentDigests: [])
+        let prompt = LocalModelPrompt.escalation(request)
+        XCTAssertTrue(prompt.contains("DIRECT QUESTION"))
+        XCTAssertTrue(prompt.contains("does NOT apply"))
+    }
+    func testWatchPromptKeepsSilencePreference() {
+        let goal = GoalContext(rawText: "find gate B62", targets: ["Gate B62"])
+        let request = EscalationRequest(sessionID: UUID(), goal: goal,
+                                        digest: digest(ocr: ["Gate B62"], pixel: 0.5), recentDigests: [])
+        XCTAssertTrue(LocalModelPrompt.escalation(request).contains("Silence is preferred"))
+    }
+}
