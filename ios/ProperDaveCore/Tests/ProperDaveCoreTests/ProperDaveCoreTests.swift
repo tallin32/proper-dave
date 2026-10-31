@@ -322,4 +322,14 @@ extension ProperDaveCoreTests {
                                         digest: digest(ocr: ["Gate B62"], pixel: 0.5), recentDigests: [])
         XCTAssertTrue(LocalModelPrompt.escalation(request).contains("Silence is preferred"))
     }
+    func testWatchFirstDigestAlwaysEscalatesBaseline() {
+        let (d, _) = Classifier.evaluate(digest: digest(ocr: ["Concourse B"], pixel: 0),
+                                         window: [], goal: GoalContext(rawText: "g", targets: ["Gate B62"]))
+        XCTAssertTrue(d.isEscalation)
+        let (d2, _) = Classifier.evaluate(digest: digest(ocr: ["Thermostat 72"], pixel: 0),
+                                          window: [], goal: GoalContext(
+                                            rawText: "tell me when the thermostat reaches 75",
+                                            targets: ["thermostat", "75"]))
+        XCTAssertTrue(d2.isEscalation)
+    }
 }

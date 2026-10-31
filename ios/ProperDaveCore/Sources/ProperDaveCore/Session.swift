@@ -124,6 +124,11 @@ public final class SessionController: ObservableObject {
             let parsed: GoalContext
             do { parsed = try await parser.parseGoal(goalText) }
             catch {
+                // Log the actual error, not just the modal title:
+                // a field report that says only "Could not start
+                // watching" is undiagnosable (owner field log, 04:58).
+                log.append(sessionID: sessionID, component: "session", event: "goal_parse_failed",
+                           detail: error.localizedDescription)
                 state = .failed(error.localizedDescription)
                 onCriticalError?("Could not start watching", "The goal could not be understood: \(error.localizedDescription)")
                 return

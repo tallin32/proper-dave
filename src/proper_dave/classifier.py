@@ -167,6 +167,18 @@ def _run(digest, window, goal, last_callout, since, reported, announced, cooldow
         kind = "escalateFrame" if not topics and change >= MAJOR_CHANGE else "escalateDigest"
         return Decision(kind, confidence=sal, **kw)
 
+    if not window:
+        # Baseline (watch goals): the first digest of a goal always
+        # escalates. From-nothing-to-anything IS the change. The
+        # model still decides whether the current status is worth
+        # speaking ("Thermostat: 72" toward a goal of 75 is; an
+        # empty corridor toward a gate goal is not, and the prompt's
+        # mere-absence rule covers that). One model call per goal
+        # start is the accepted price.
+        kind = "escalateDigest" if gained else "escalateFrame"
+        return Decision(kind, confidence=max(relevance, 0.5),
+                        change=change, relevance=relevance, landmark=landmark)
+
     if since is not None and since < cooldown_s and change < MAJOR_CHANGE:
         return Decision("suppress", "cooldown", change=change, relevance=relevance)
     if last_callout and gained and all(g in last_callout.lower() for g in gained):

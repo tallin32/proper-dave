@@ -122,3 +122,12 @@ def test_fake_parser_classifies_front_of_camera_as_question():
     from proper_dave.cloud import FakeCloudModel
     g = FakeCloudModel().parse_goal("Tell me what's in front of the camera.")
     assert g.kind == "question"
+
+
+def test_watch_first_digest_always_escalates_baseline():
+    d = evaluate(digest(ocr=["Concourse B"], pixel=0.0), [], goal(["Gate B62"]))
+    assert d.kind in ("escalateDigest", "escalateFrame")
+    d2 = evaluate(digest(ocr=["Thermostat 72"], pixel=0.0), [],
+                  GoalContext(rawText="tell me when the thermostat reaches 75",
+                              targets=["thermostat", "75"]))
+    assert d2.kind in ("escalateDigest", "escalateFrame")
