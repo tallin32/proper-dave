@@ -131,10 +131,11 @@ that customisation stays visible. What production hides is the
 - **INS-13** Behind Developer Mode in production: capture frame-rate
   and sampling controls, detailed progress-noise (heartbeat) tuning,
   the debug log viewer and shake-to-view (INS-05), server/model
-  internals beyond the connection test, and the Easter egg's
-  activation field (INS-10). Product controls — goal entry, source
-  selection, glasses connect, skills when they exist — are never
-  gated by this mode.
+  internals beyond the connection test, the model-selection
+  ceiling and pin (TRD-003 §2; Auto itself stays visible and is
+  the default), and the Easter egg's activation field (INS-10).
+  Product controls — goal entry, source selection, glasses
+  connect, skills when they exist — are never gated by this mode.
 - **INS-14** Enabling or disabling Developer Mode is logged
   (INS-01), takes effect without restart, and disabling it returns
   every gated control to its hidden state immediately.
