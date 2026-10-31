@@ -139,6 +139,16 @@ public enum Classifier {
 
         let scores = Scores(change: change, relevance: relevance, landmark: landmark)
 
+        if window.isEmpty {
+            // Baseline (watch goals): the first digest always
+            // escalates — from-nothing-to-anything IS the change.
+            // The model decides whether current status is worth
+            // speaking ("Thermostat: 72" toward 75 is; an empty
+            // corridor toward a gate goal is not). Mirrors classifier.py.
+            if gained.isEmpty { return (.escalateFrame(confidence: max(relevance, 0.5), landmark: landmark), scores) }
+            return (.escalateDigest(confidence: max(relevance, 0.5), landmark: landmark), scores)
+        }
+
         if let since = secondsSinceEscalation, since < cooldown, change < majorChangeThreshold {
             return (.suppress(reason: "cooldown"), scores)
         }

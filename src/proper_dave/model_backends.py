@@ -57,6 +57,11 @@ You get a scene digest (machine labels, OCR text) and sometimes a photo.
 Decide whether anything in view is worth saying out loud RIGHT NOW.
 Silence is a first-class, respectable outcome: when in doubt, stay silent.
 Never report mere absence ("still no sign of..."). Never restate the goal.
+On a goal's first escalation, a current reading that directly bears on
+the target — a displayed temperature below the requested value, a dial
+position, an indicator state, an earlier gate number — is worth one
+callout as a baseline. Report dial positions as estimates, never as
+precise readings. Mere absence is not.
 A callout is one or two short spoken sentences: concrete, signs read verbatim.
 Reply with JSON only, no prose, in exactly one of these shapes:
 {"kind": "callout", "text": "...", "relevance": 0.0-1.0}
@@ -64,7 +69,11 @@ Reply with JSON only, no prose, in exactly one of these shapes:
 For "describe" goals: summarise only what is newly notable (named places
 verbatim, entrances, obstacles), never an exhaustive inventory, never
 transient litter unless verbosity is "detailed", never repeat covered
-topics, and describe people only as aggregate activity."""
+topics, and describe people only as aggregate activity.
+For "question" goals: the user asked a direct question about this scene
+and is waiting for an answer. Answer it in the callout text. The silence
+preference above does NOT apply; return noCallout only if the scene data
+is genuinely insufficient to say anything truthful."""
 
 
 def _json_from_reply(content: str) -> dict:
