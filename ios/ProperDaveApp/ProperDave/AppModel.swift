@@ -208,6 +208,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Client-side NLU: the best local understander parses and
+    /// refines goals regardless of where judgement routes (TRD-003 §2).
+    var understandingClient: any CloudModelClient {
+        // The demo must stay self-contained and deterministic: its own
+        // parser, never a system model that may claim availability and
+        // then fail generation (observed in the simulator).
+        if backend == .demo { return DemoCloudClient() }
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), AppleOfflineModel.isAvailable { return AppleLocalClient() }
+        #endif
+        if modelPacks.isDownloaded { return DownloadableLocalClient(packManager: modelPacks) }
+        return cloudClient
+    }
+
     var offlineStatusText: String {
         switch offlineTier {
         case .apple: return AppleOfflineModel.statusText
@@ -250,7 +264,7 @@ final class AppModel: ObservableObject {
                        detail: "\(offlineTier.rawValue): \(offlineStatusText)")
         }
         let cooldown = sourceKind == .mock ? max(3, sampleInterval * 1.5) : Classifier.defaultCooldown
-        session.start(goalText: text, client: cloudClient, source: makeSource(for: sourceKind),
+        session.start(goalText: text, parser: understandingClient, evaluator: cloudClient, source: makeSource(for: sourceKind),
                       interval: sampleInterval, cooldown: cooldown)
         speaker.speak("Watching. \(text)")
     }
