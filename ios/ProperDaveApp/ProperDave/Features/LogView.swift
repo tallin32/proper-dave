@@ -9,6 +9,7 @@ struct LogView: View {
     @EnvironmentObject private var log: EventLog
     @State private var filter = "All"
     @State private var copied = false
+    @State private var copyResetTask: Task<Void, Never>?
 
     private var components: [String] {
         ["All"] + Array(Set(log.events.map(\.component))).sorted()
@@ -39,8 +40,16 @@ struct LogView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button(copied ? "Copied" : "Copy JSONL") {
+                    // Copies fresh JSONL on EVERY tap; the label is
+                    // transient confirmation, then reverts so the next
+                    // copy is visibly an action again.
                     UIPasteboard.general.string = log.jsonl()
                     copied = true
+                    copyResetTask?.cancel()
+                    copyResetTask = Task {
+                        try? await Task.sleep(for: .seconds(1.6))
+                        if !Task.isCancelled { copied = false }
+                    }
                 }
                 Button("Clear", role: .destructive) { log.clear() }
             }
