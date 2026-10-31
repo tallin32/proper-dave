@@ -96,7 +96,21 @@ struct FoundationLocalClient: CloudModelClient {
     let modelName: String
     let makeSession: @Sendable () -> LanguageModelSession
 
+    /// One retry with a fresh session: the system model
+    /// intermittently fails a generation outright (observed in the
+    /// field at 04:58, one second after goal start, on a prompt
+    /// that had parsed cleanly at 04:41). A transient generation
+    /// error must not be a dead goal.
+    private func withRetry<T>(_ operation: () async throws -> T) async throws -> T {
+        do { return try await operation() }
+        catch { return try await operation() }
+    }
+
     func parseGoal(_ rawText: String) async throws -> GoalContext {
+        try await withRetry { try await parseGoalOnce(rawText) }
+    }
+
+    private func parseGoalOnce(_ rawText: String) async throws -> GoalContext {
         let output = try await makeSession().respond(
             to: LocalModelPrompt.goalParse(rawText), generating: LocalGoalOutput.self).content
         let targets = output.targets.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
@@ -111,6 +125,10 @@ struct FoundationLocalClient: CloudModelClient {
     }
 
     func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+        try await withRetry { try await refineOnce(current: current, refinement: refinement) }
+    }
+
+    private func refineOnce(current: GoalContext, refinement: String) async throws -> GoalContext {
         let prompt = """
         Current goal: \(current.rawText)
         Kind: \(current.kind.rawValue), verbosity: \(current.verbosity.rawValue)
@@ -135,6 +153,10 @@ struct FoundationLocalClient: CloudModelClient {
     }
 
     func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+        try await withRetry { try await evaluateOnce(request) }
+    }
+
+    private func evaluateOnce(_ request: EscalationRequest) async throws -> CalloutResult {
         let session = makeSession()
         let output: LocalEscalationOutput
         if #available(iOS 27.0, *),
