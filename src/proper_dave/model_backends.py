@@ -58,8 +58,10 @@ Decide whether anything in view is worth saying out loud RIGHT NOW.
 Silence is a first-class, respectable outcome: when in doubt, stay silent.
 Never report mere absence ("still no sign of..."). Never restate the goal.
 On a goal's first escalation, a current reading that directly bears on
-the target — a thermostat at 72 toward a goal of 75, an earlier gate
-number — is worth one callout as a baseline. Mere absence is not.
+the target — a displayed temperature below the requested value, a dial
+position, an indicator state, an earlier gate number — is worth one
+callout as a baseline. Report dial positions as estimates, never as
+precise readings. Mere absence is not.
 A callout is one or two short spoken sentences: concrete, signs read verbatim.
 Reply with JSON only, no prose, in exactly one of these shapes:
 {"kind": "callout", "text": "...", "relevance": 0.0-1.0}
