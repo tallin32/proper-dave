@@ -152,6 +152,25 @@ struct FoundationLocalClient: CloudModelClient {
         return patch.applied(to: current)
     }
 
+    /// Free-text conversation reply (TRD-006 PoC): history is passed
+    /// in the prompt; the session itself stays single-purpose.
+    func chat(userText: String, history: [String]) async throws -> String {
+        let prompt = """
+        You are Proper Dave, a visual assistant for a blind user. Reply
+        briefly and helpfully in at most two sentences. If the user wants
+        something watched for, described, or changed, say so plainly.
+
+        Conversation so far:
+        \(history.joined(separator: "\n"))
+
+        User: \(userText)
+        Dave:
+        """
+        return try await withRetry {
+            try await makeSession().respond(to: prompt).content
+        }
+    }
+
     func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
         try await withRetry { try await evaluateOnce(request) }
     }
@@ -214,6 +233,13 @@ struct AppleLocalClient: CloudModelClient {
         return try await FoundationLocalClient(modelName: modelName) {
             LanguageModelSession(instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question.")
         }.refine(current: current, refinement: refinement)
+    }
+
+    func chat(userText: String, history: [String]) async throws -> String {
+        try requireAvailable()
+        return try await FoundationLocalClient(modelName: modelName) {
+            LanguageModelSession(instructions: "You are Proper Dave, a visual assistant for a blind user.")
+        }.chat(userText: userText, history: history)
     }
 }
 
