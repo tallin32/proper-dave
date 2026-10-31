@@ -9,6 +9,7 @@ struct HomeView: View {
     @StateObject private var dictation = Dictation()
     @FocusState private var goalFocused: Bool
     @State private var refineText = ""
+    @State private var showConversation = false
 
     private let examples = [
         "Tell me when the elevator arrives at my floor",
@@ -70,6 +71,7 @@ struct HomeView: View {
                     }
                 }
             }
+            .fullScreenCover(isPresented: $showConversation) { ConversationView() }
             .scrollDismissesKeyboard(.interactively)
             .keyboardDoneToolbar(focus: $goalFocused)
             .navigationTitle("Proper Dave")
@@ -132,7 +134,8 @@ struct HomeView: View {
                 if isWatching {
                     Button("Stop", role: .destructive) { model.stopWatching() }.buttonStyle(.borderedProminent)
                 } else {
-                    Button("Start watching") { model.startWatching() }
+                    Button("Conversation") { showConversation = true }
+                Button("Start watching") { model.startWatching() }
                         .buttonStyle(.borderedProminent)
                         .disabled(model.promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }

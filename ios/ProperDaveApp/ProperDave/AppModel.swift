@@ -274,6 +274,50 @@ final class AppModel: ObservableObject {
         speaker.speak("Stopped.")
     }
 
+    /// Conversation PoC turn routing (TRD-006): commands route to
+    /// existing capabilities; anything else goes to a local model
+    /// chat when one is available, else an honest capability reply.
+    func conversationTurn(_ rawText: String, history: [String]) async -> String {
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let low = text.lowercased()
+        guard !text.isEmpty else { return "I didn't catch that." }
+        if session.state == .watching && (low == "stop" || low.hasPrefix("stop watching")) {
+            stopWatching()
+            return "Stopped watching."
+        }
+        let questionMarkers = ["what's in front", "what is in front", "what do you see",
+                               "in front of the camera", "in front of me"]
+        if questionMarkers.contains(where: low.contains) {
+            promptText = text
+            startWatching()
+            return "Looking — I'll tell you what I see."
+        }
+        if session.state == .watching {
+            refineWatching(text)
+            return "Applying that to the current goal."
+        }
+        if low.hasPrefix("watch") || low.hasPrefix("tell me when") || low.hasPrefix("find")
+            || low.contains("describe") || low.contains("tell me what") {
+            promptText = text
+            startWatching()
+            return "Starting that now."
+        }
+        if let reply = await localChat(text, history: history) { return reply }
+        return "I'm better at watching than chatting. Try “watch for the elevator”, “what's in front of me?”, or “tell me what I see as I pass”."
+    }
+
+    private func localChat(_ text: String, history: [String]) async -> String? {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), AppleOfflineModel.isAvailable {
+            return try? await AppleLocalClient().chat(userText: text, history: history)
+        }
+        #endif
+        if modelPacks.isDownloaded {
+            return try? await DownloadableLocalClient(packManager: modelPacks).chat(userText: text, history: history)
+        }
+        return nil
+    }
+
     /// CLS-16 refinement: patch the running goal, never restart it.
     func refineWatching(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
