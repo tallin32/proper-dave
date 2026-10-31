@@ -107,6 +107,21 @@ true, visible, and beneath notice.)
   individual passers-by, and already-announced topics score at or
   below zero. Announced topics are remembered per session — the
   fourth identical coffee chain is not news.
+- **CLS-17** Saliency is **task-conditioned, never a global property
+  of objects**. The weights in CLS-13 are priors for a generic
+  stroll; goal parsing also emits a saliency profile — focus
+  categories, a prominence floor (how small/faint a thing may be and
+  still count), and persistence rules (must it linger, or does a
+  passing glimpse count?). "Did I leave anything on the floor when
+  I swept?" makes small static floor-level objects maximally
+  salient and pedestrians noise; a Madison Avenue stroll inverts
+  that. Refinement (CLS-16) may retune the profile mid-goal
+  ("no — the *small* stuff matters").
+- **CLS-18** When people are the focus ("people-watching on this
+  platform"), narration describes observable activity in aggregate
+  — crowds boarding, a musician by the pillar — never identification
+  of individuals and never inferred personal traits. This binds the
+  model prompt as well as the scorer.
 - **CLS-14** Describe speaks on **scene transitions, not frames**:
   the caller accumulates a digest window and escalates at a
   transition (new block, new frontage) or window close, under a
@@ -125,6 +140,12 @@ true, visible, and beneath notice.)
   all carry over. An unparseable refinement is announced once and
   the existing goal continues unchanged; refinement never silently
   restarts or ends a watch.
+- **CLS-19** Accumulating refinements are the seed of a user skill:
+  when a session's goal-plus-refinements grows complex enough, Dave
+  may *offer* to save the whole configuration — goal, saliency
+  profile, verbosity, thresholds — as a named, reusable skill
+  (TRD-000 §7). Offer only, never automatic; the authoring UX is
+  deliberately undecided (see TRD-000 §7).
 
 ## 6. Failure behaviour
 
