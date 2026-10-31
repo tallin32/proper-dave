@@ -54,6 +54,30 @@ never silently upgrades the back end: a user who chose an offline
 tier chose it (CLD-06), and an honest "no" beats two hours of
 confident incompetence.
 
+The capability check is a **router, not a learned model**. Goal
+parsing already produces structured output; it additionally emits a
+capability profile (goal kind, needs-image?, visual-detail level,
+temporal span, audio needed?, judgement complexity), derived by
+rules over the prompt and goal kind — no separate on-device
+classifier model is trained or shipped for this. A learned router
+is premature: there is no labelled corpus of "this prompt needed a
+frontier model", and the failure it would prevent is already
+prevented by the deterministic profile plus the model's own
+structured confidence at escalation time. The profile maps to the
+cheapest sufficient tier (system model / downloadable vision model
+/ server frontier). Two hard rules:
+
+- The user's selected mode is a **boundary, not a hint**. If the
+  profile says "frontier" and the user is in offline mode — or in
+  the subway with no service — Dave says so once at goal start
+  (notification/modal per the user's TRD-005 presentation setting),
+  offers the degraded local alternative, and proceeds only if the
+  user accepts it. No silent downgrade, no silent upgrade.
+- Mid-goal, an escalation that outgrows the live tier (thin digest,
+  low model confidence) while the network is gone degrades to
+  no-callout with **one** notice per session (SYS-05), never a
+  repeating "still can't" loop.
+
 For describe escalations the model's instruction differs from watch:
 summarise only what is newly notable in this window — named places
 read verbatim, entrances, obstacles in the path — in one or two

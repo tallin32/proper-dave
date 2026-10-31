@@ -99,6 +99,15 @@ may be present-but-gated rather than absent.
   in the binary; that is accepted. What is verified — against the
   release build, not assumed — is unreachability while the mode is
   off, and exact behaviour (§5) while it is on.
+- **INS-20** One permitted variation: a **capability refusal**
+  (TRD-003 §2 — Dave declining a task beyond the selected tier) is
+  not a critical error and does not use INS-09's title. When the egg
+  is active, its title may instead read: “I’m sorry Dave, I’m
+  afraid I can’t do that.” When the egg is inactive the title is
+  plain (“Beyond the current mode”, or equivalent). The body text
+  is identical either way: what was asked, why this mode can't,
+  and the nearest alternative. A joke in the title never replaces
+  the explanation.
 
 ## 7. Acceptance
 
