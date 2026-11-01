@@ -82,6 +82,15 @@ public final class SessionController: ObservableObject {
     /// One-line spoken notices that are neither callouts nor errors
     /// (refinement applied/declined, describe-mode notes).
     public var onNotice: ((String) -> Void)?
+    /// Connectivity episodes: fired once when the evaluator starts
+    /// failing as unreachable (server down, network gone), and once
+    /// when the *same* evaluator answers successfully again. The app
+    /// owns the user-visible response (spoken notice, optional local
+    /// fallback); the session only reports. A success from a swapped
+    /// in fallback evaluator does not close the episode.
+    public var onConnectivityLost: (() -> Void)?
+    public var onConnectivityRestored: (() -> Void)?
+    private var evaluatorGeneration = 0
     /// Called when a stream belonging to the *active* source ends while
     /// watching. The app may return a fallback source (e.g. phone camera)
     /// to keep the goal alive — CAP-14 degradation, not an error.
@@ -211,6 +220,60 @@ public final class SessionController: ObservableObject {
         }
     }
 
+    /// Conversation control plane: apply a deterministic patch to
+    /// the running goal with no model round-trip ("tell me more",
+    /// "just the landmarks"). The consume loop picks the new goal up
+    /// on its next digest. Returns false when nothing is running.
+    @discardableResult
+    public func applyPatch(_ patch: GoalPatch, origin: String) -> Bool {
+        guard let current = goal,
+              state == .watching || state == .pausedForDebug, !patch.isEmpty else { return false }
+        goal = patch.applied(to: current)
+        log.append(sessionID: sessionID, component: "session", event: "goal_patched",
+                   detail: "origin=\(origin) verbosity=\(goal!.verbosity.rawValue) targets=\(goal!.targets.joined(separator: ","))")
+        return true
+    }
+
+    /// Swap the judging evaluator mid-goal (connectivity fallback
+    /// and restore). Goal, source, window, and callout history all
+    /// carry over; the loop adopts the new evaluator on its next
+    /// digest and clears any backoff accumulated against the old one.
+    public func replaceEvaluator(_ newClient: any CloudModelClient, reason: String) {
+        client = newClient
+        evaluatorGeneration += 1
+        log.append(sessionID: sessionID, component: "cloud", event: "evaluator_swapped",
+                   detail: "reason=\(reason) model=\(newClient.modelName)")
+    }
+
+    /// Deterministic status for "what are you doing?": composed from
+    /// session state, never from a model, so it cannot hallucinate.
+    public func statusSummary() -> String {
+        switch state {
+        case .idle, .ended:
+            return "I'm not watching right now."
+        case .starting:
+            return "I'm just starting to watch."
+        case .failed(let message):
+            return "The last goal couldn't run: \(message)"
+        case .watching, .pausedForDebug:
+            guard let goal else { return "I'm watching, but the goal is unclear." }
+            let activity: String
+            switch goal.kind {
+            case .describe: activity = "telling you what I see as it changes"
+            case .question: activity = "answering your question about the scene"
+            case .watch:
+                activity = goal.targets.isEmpty ? "watching" : "watching for \(goal.targets.joined(separator: ", "))"
+            }
+            var text = "I'm \(activity). Your goal was: \(goal.rawText)"
+            if let lastCallout {
+                text += " The last thing I told you was: \(lastCallout)"
+            } else {
+                text += " I haven't seen anything worth telling you yet."
+            }
+            return text
+        }
+    }
+
     private func consume(source: any DigestSource, goal: GoalContext, client: any CloudModelClient) async {
         state = .watching
         activeSourceID = source.sourceID
@@ -219,11 +282,32 @@ public final class SessionController: ObservableObject {
         var received = 0
         var describeBaselineAttempted = false
         var modelBackoffUntil: Date?
+        // The running loop must see refinements: refineGoal() and
+        // applyPatch() replace the published goal, but this loop used
+        // to keep judging against the goal captured at start, so a
+        // mid-goal refinement silently changed nothing (found while
+        // building the conversation control plane).
+        var liveGoal = goal
+        // Connectivity episode state: which evaluator lost contact,
+        // so a fallback's success cannot masquerade as restoration.
+        var lostEvaluatorName: String?
+        var seenEvaluatorGeneration = evaluatorGeneration
         for await digest in source.stream(sessionID: sessionID, interval: interval) {
             // A cancelled task belongs to a superseded source: stop eating
             // its frames even though the session itself is still watching.
             if Task.isCancelled { break }
             received += 1
+            if evaluatorGeneration != seenEvaluatorGeneration {
+                seenEvaluatorGeneration = evaluatorGeneration
+                modelBackoffUntil = nil
+            }
+            let evaluator = self.client ?? client
+            if let updated = self.goal, updated != liveGoal {
+                liveGoal = updated
+                log.append(sessionID: sessionID, component: "session", event: "goal_refinement_live",
+                           detail: "kind=\(updated.kind.rawValue) verbosity=\(updated.verbosity.rawValue) targets=\(updated.targets.joined(separator: ","))")
+            }
+            let goal = liveGoal
             if state == .pausedForDebug { continue }
             guard state == .watching else { break }
             if goal.kind == .question {
@@ -246,7 +330,7 @@ public final class SessionController: ObservableObject {
                                                 recentDigests: [], image: image, lastCallout: nil)
                 log.append(sessionID: sessionID, component: "cloud", event: "question_sent", detail: goal.rawText)
                 do {
-                    switch try await evaluateWithTimeout(client, request) {
+                    switch try await evaluateWithTimeout(evaluator, request) {
                     case .callout(let text, _) where Self.isPromptEcho(text):
                         log.append(sessionID: sessionID, component: "speech", event: "callout_suppressed_echo", detail: text)
                         if !Task.isCancelled { onNotice?("I couldn't tell what's there from this view.") }
@@ -342,10 +426,27 @@ public final class SessionController: ObservableObject {
             }
             let callStarted = Date()
             let result: Result<CalloutResult, Error>
-            do { result = .success(try await evaluateWithTimeout(client, request)) }
+            do { result = .success(try await evaluateWithTimeout(evaluator, request)) }
             catch { result = .failure(error) }
             log.append(sessionID: sessionID, component: "cloud", event: "model_call_finished",
-                       detail: "\(Int(Date().timeIntervalSince(callStarted) * 1000))ms model=\(client.modelName)")
+                       detail: "\(Int(Date().timeIntervalSince(callStarted) * 1000))ms model=\(evaluator.modelName)")
+            // Connectivity episode bookkeeping: one loss report per
+            // episode, restored only when the evaluator that lost
+            // contact answers again (a fallback's success is not a
+            // restoration).
+            if case .success = result, let lost = lostEvaluatorName, lost == evaluator.modelName {
+                lostEvaluatorName = nil
+                log.append(sessionID: sessionID, component: "cloud", event: "connectivity_restored",
+                           detail: "model=\(evaluator.modelName)")
+                onConnectivityRestored?()
+            }
+            if case .failure(let error) = result, lostEvaluatorName == nil,
+               Self.isConnectivityError(error) {
+                lostEvaluatorName = evaluator.modelName
+                log.append(sessionID: sessionID, component: "cloud", event: "connectivity_lost",
+                           detail: "model=\(evaluator.modelName) \(error.localizedDescription)")
+                onConnectivityLost?()
+            }
             // A result that lands after the goal ended (the user
             // stopped while Qwen was still loading) must never be
             // spoken: the field log showed a baseline fallback
@@ -378,6 +479,12 @@ public final class SessionController: ObservableObject {
                                detail: "escalations paused briefly after server said too_soon")
                     if isDescribeBaseline { describeBaselineAttempted = false }
                 } else if reason == "model_unavailable" || reason == "rate_limited" {
+                    if reason == "model_unavailable", lostEvaluatorName == nil {
+                        lostEvaluatorName = evaluator.modelName
+                        log.append(sessionID: sessionID, component: "cloud", event: "connectivity_lost",
+                                   detail: "model=\(evaluator.modelName) server said model_unavailable")
+                        onConnectivityLost?()
+                    }
                     // A backend health signal, not a judgement
                     // about the scene: it must never trigger the
                     // dark/blank fallback (field log 04:29, first
@@ -430,7 +537,7 @@ public final class SessionController: ObservableObject {
         if received > 0, let fallback = fallbackSource?(), fallback.sourceID != source.sourceID {
             log.append(sessionID: sessionID, component: "capture", event: "source_fallback", detail: "to=\(fallback.sourceID)")
             onSourceFallback?(fallback.sourceID)
-            await consume(source: fallback, goal: goal, client: client)
+            await consume(source: fallback, goal: liveGoal, client: client)
             return
         }
         activeSourceID = nil
@@ -457,6 +564,16 @@ public final class SessionController: ObservableObject {
     /// established…", field log 03:19) must never be spoken. The
     /// phrases are boilerplate from our own prompts/instructions,
     /// never legitimate scene descriptions.
+    /// Transport-shaped failures: the evaluator could not be
+    /// reached at all, as opposed to answering badly or slowly.
+    nonisolated static func isConnectivityError(_ error: Error) -> Bool {
+        let low = error.localizedDescription.lowercased()
+        return ["could not reach", "unreachable", "appears to be offline",
+                "hostname could not be found", "network connection was lost",
+                "cannot connect to the server", "connection reset",
+                "could not connect"].contains { low.contains($0) }
+    }
+
     nonisolated static func isPromptEcho(_ text: String) -> Bool {
         let low = text.lowercased()
         return ["on-device gate", "not yours to re-make", "silence preference",

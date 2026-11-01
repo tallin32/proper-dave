@@ -86,6 +86,9 @@ struct SettingsView: View {
                         }
                         SecureField("API key (optional)", text: $model.apiKey)
                             .focused($fieldFocused)
+                        Toggle("Use on-device model if connection is lost", isOn: $model.useLocalModelOnConnectivityLoss)
+                        Text("If the server becomes unreachable mid-goal, you're told once and the goal keeps running. With this on, the on-device model judges until the server answers again, then judging switches back automatically.")
+                            .font(.footnote).foregroundStyle(.secondary)
                         Button {
                             model.testConnection()
                         } label: {

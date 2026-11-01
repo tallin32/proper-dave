@@ -4,6 +4,12 @@ import Foundation
 public protocol CloudModelClient: Sendable {
     func parseGoal(_ rawText: String) async throws -> GoalContext
     func evaluate(_ request: EscalationRequest) async throws -> CalloutResult
+    /// Mid-goal refinement (CLS-16). This must be a requirement,
+    /// not just an extension default: as a default-only method it
+    /// was statically dispatched through `any CloudModelClient`,
+    /// so every client's own refine was bypassed and the throwing
+    /// default always ran — model-backed refinement never worked.
+    func refine(current: GoalContext, refinement: String) async throws -> GoalContext
     var modelName: String { get }
 }
 
@@ -50,7 +56,10 @@ public struct ServerCloudClient: CloudModelClient {
     }
 
     public func health() async -> Bool {
-        (try? await URLSession.shared.data(for: URLRequest(url: baseURL.appendingPathComponent("health")))) != nil
+        guard let (_, response) = try? await URLSession.shared.data(
+            for: URLRequest(url: baseURL.appendingPathComponent("health"))),
+              let http = response as? HTTPURLResponse else { return false }
+        return http.statusCode == 200
     }
     public func parseGoal(_ rawText: String) async throws -> GoalContext {
         struct Body: Encodable { var rawText: String }
