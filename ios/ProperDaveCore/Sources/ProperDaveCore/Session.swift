@@ -204,6 +204,7 @@ public final class SessionController: ObservableObject {
         log.append(sessionID: sessionID, component: "capture", event: "capture_started", detail: source.sourceID)
         var received = 0
         var describeBaselineAttempted = false
+        var modelBackoffUntil: Date?
         for await digest in source.stream(sessionID: sessionID, interval: interval) {
             // A cancelled task belongs to a superseded source: stop eating
             // its frames even though the session itself is still watching.
@@ -275,6 +276,14 @@ public final class SessionController: ObservableObject {
             window.append(digest)
             if window.count > 5 { window.removeFirst() }
             guard decision.isEscalation else { continue }
+            if let modelBackoffUntil, Date() < modelBackoffUntil {
+                // The model told us to slow down (rate limited in
+                // the field after an escalation storm); hammering
+                // it every digest only extends the penalty.
+                log.append(sessionID: sessionID, component: "cloud", event: "escalation_suppressed_backoff",
+                           detail: "model backoff until \(modelBackoffUntil)")
+                continue
+            }
             if let landmark = scores.landmark { reportedLandmarks.insert(landmark) }
             if goal.kind == .describe { announcedTopics.formUnion(scores.topics) }
             lastEscalationAt = Date()
@@ -303,15 +312,27 @@ public final class SessionController: ObservableObject {
             do {
                 switch try await client.evaluate(request) {
                 case .callout(let text, _):
-                    lastCallout = text
-                    log.append(sessionID: sessionID, component: "speech", event: "callout_spoken", detail: text)
-                    onCallout?(text)
+                    if let lastCallout, Self.isDuplicateCallout(text, of: lastCallout) {
+                        // Never say the same thing twice in a row:
+                        // a model that describes every room as "a
+                        // cluttered area" must not become a loop.
+                        log.append(sessionID: sessionID, component: "speech", event: "callout_suppressed_duplicate", detail: text)
+                    } else {
+                        lastCallout = text
+                        log.append(sessionID: sessionID, component: "speech", event: "callout_spoken", detail: text)
+                        onCallout?(text)
+                    }
                 case .noCallout(let reason):
                     log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
                     if isDescribeBaseline { speakDescribeBaselineFallback() }
                 }
             } catch {
                 log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
+                if error.localizedDescription.lowercased().contains("rate limit") {
+                    modelBackoffUntil = Date().addingTimeInterval(30)
+                    log.append(sessionID: sessionID, component: "cloud", event: "model_backoff",
+                               detail: "rate limited; escalations paused 30s")
+                }
                 if isDescribeBaseline { speakDescribeBaselineFallback() }
             }
         }
@@ -348,6 +369,19 @@ public final class SessionController: ObservableObject {
         state = .watching
         log.append(sessionID: sessionID, component: "capture", event: "capture_resumed_debug")
     }
+    /// Near-duplicate speech check: same words, or one text's
+    /// words almost wholly contained in the other's ("The scene
+    /// is a cluttered area…" vs "A cluttered area…").
+    nonisolated static func isDuplicateCallout(_ text: String, of previous: String) -> Bool {
+        func words(_ s: String) -> Set<String> {
+            Set(s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        }
+        let a = words(text), b = words(previous)
+        guard !a.isEmpty, !b.isEmpty else { return false }
+        let overlap = Double(a.intersection(b).count) / Double(min(a.count, b.count))
+        return overlap >= 0.8
+    }
+
     public func stop(confirm: Bool = true) {
         task?.cancel(); task = nil
         currentSource?.stop(); currentSource = nil
