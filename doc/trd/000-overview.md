@@ -118,6 +118,23 @@ interfaces keep room for them):
 - **Incident reporting.** Crashes and failures the user cannot solve
   should eventually be sendable as incident reports to the operator
   (TRD-005 §9) — always by explicit user action, never silently.
+- **Continuous-monitoring assumption (Settings toggle?).** Tools in
+  this space tend to bake in one posture: continual monitoring, with
+  separate tools (Be My AI is the example) meant for one-shots.
+  Proper Dave currently decides per goal, from the user's wording —
+  one-shot question vs continuing describe/watch (see the
+  deterministic intent floor in `GoalIntent`; TRD-002/TRD-003 own the
+  parsing rules). Worth considering a user-facing Settings toggle,
+  "assume continuous monitoring", that sets the default reading of
+  *ambiguous* phrasings (continuous unless the wording is plainly
+  singular, or vice versa), with the explicit wording always
+  winning and a mid-goal refinement able to flip a running goal.
+  Open questions if taken up: which way the default ships, whether
+  the toggle lives beside or behind Developer Mode, and how it
+  interacts with conversation mode's defaults (TRD-006). Recorded
+  as a consideration only; nothing in the MVP implements it, and
+  goal-kind detection remains language-driven until the owner
+  decides.
 
 ## 8. Build order
 
