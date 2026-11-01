@@ -408,3 +408,65 @@ extension ProperDaveCoreTests {
         XCTAssertFalse(later.contains("BASELINE"), later)
     }
 }
+
+extension ProperDaveCoreTests {
+    final class SilentDescribeClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "silent-describe"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "No new notable elements observed.")
+        }
+    }
+
+    final class ScriptedDescribeSource: DigestSource, @unchecked Sendable {
+        let sourceID = "scripted-describe"
+        let labels: [String]
+        init(labels: [String]) { self.labels = labels }
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: labels.map { ScoredLabel(name: $0, confidence: 0.9) },
+                            sceneChange: ChangeMetrics(pixelDiff: 0.1)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    @MainActor
+    func testDescribeBaselineSpeaksEvenForBlackVoid() async throws {
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: []),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(spoken, ["I can't make anything out from the camera right now. The view looks dark or blank."],
+                       "a describe goal must report its first scene even when that scene is a void")
+    }
+
+    @MainActor
+    func testDescribeBaselineFallbackNamesVisibleLabelsOnce() async throws {
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: ["laptop", "desk"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(spoken, ["laptop, desk in view."])
+    }
+}
