@@ -173,6 +173,12 @@ def _run(digest, window, goal, last_callout, since, reported, announced, cooldow
                     return not union or len(now ^ prev) / len(union) <= 0.5
 
                 if not any(_stable(past) for past in window[-2:]):
+                    # In motion no scene survives two digests.
+                    # After a sustained major change, announce the
+                    # current passing scene as a snapshot instead.
+                    if since is not None and since >= 15 and change >= MAJOR_CHANGE:
+                        kw = dict(change=change, relevance=change, saliency=sal, topics=topics)
+                        return Decision("escalateFrame", confidence=change, **kw)
                     return Decision("suppress", "sceneUnstable", **kw)
             kw = dict(change=change, relevance=change, saliency=sal, topics=topics)
             kind = "escalateFrame" if not topics and change >= MAJOR_CHANGE else "escalateDigest"

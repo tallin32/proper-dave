@@ -170,7 +170,8 @@ class ChatModelClient:
             if any(m in low for m in self._CONTINUING_MARKERS):
                 # Same scene wording, continuing intent: describe,
                 # not a one-shot question that ends after one answer.
-                return GoalContext(rawText=raw_text.strip(), targets=["scene changes"], kind="describe")
+                return GoalContext(rawText=raw_text.strip(), targets=[], kind="describe",
+                                   verbosity="detailed")
             return GoalContext(rawText=raw_text.strip(),
                                targets=["the scene in front of the camera"],
                                kind="question")

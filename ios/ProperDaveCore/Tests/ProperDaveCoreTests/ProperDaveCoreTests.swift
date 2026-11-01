@@ -738,3 +738,53 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(spoken, ["laptop in view."], "spoken: \(spoken)")
     }
 }
+
+extension ProperDaveCoreTests {
+    func testSceneChangeInMotionAnnouncesSnapshotAfterInterval() {
+        let window = [digest(labels: ["laptop", "desk"], pixel: 0.1),
+                      digest(labels: ["window", "curtain"], pixel: 0.8)]
+        let current = digest(labels: ["stove", "sink"], pixel: 0.95)
+        let (held, _) = Classifier.evaluate(digest: current, window: window,
+                                            goal: sceneGoal(), secondsSinceEscalation: 5)
+        XCTAssertEqual(held, .suppress(reason: "sceneUnstable"))
+        let (moving, _) = Classifier.evaluate(digest: current, window: window,
+                                              goal: sceneGoal(), secondsSinceEscalation: 16)
+        XCTAssertTrue(moving.isEscalation, "\(moving)")
+    }
+
+    func testContinuingWhatYouSeeIsDetailedDescribe() {
+        let goal = GoalIntent.intentGoal(for: "Keep telling me what you see")
+        XCTAssertEqual(goal?.kind, .describe)
+        XCTAssertEqual(goal?.verbosity, .detailed)
+    }
+
+    struct RateLimitError: LocalizedError {
+        var errorDescription: String? { "The session has been rate limited." }
+    }
+
+    final class RateLimitedClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "rate-limited"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            throw RateLimitError()
+        }
+    }
+
+    @MainActor
+    func testRateLimitedBaselineDoesNotAnnounceVoid() async throws {
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        var notices: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.onNotice = { notices.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: RateLimitedClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertTrue(spoken.isEmpty, "spoken: \(spoken)")
+        XCTAssertEqual(notices, ["The model is rate limited right now. I'll keep watching and try again shortly."])
+    }
+}
