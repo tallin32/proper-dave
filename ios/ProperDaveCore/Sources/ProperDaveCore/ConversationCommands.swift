@@ -17,6 +17,8 @@ public enum ConversationCommand: Equatable, Sendable {
     case moreDetail
     case lessDetail
     case landmarksOnly
+    case speakFaster
+    case speakSlower
 
     private static let table: [(ConversationCommand, Set<String>)] = [
         (.status, ["what are you doing", "what are you doing right now",
@@ -40,6 +42,12 @@ public enum ConversationCommand: Equatable, Sendable {
                           "just landmarks", "only the landmarks",
                           "landmarks, nothing else", "just the big things",
                           "only the big things"]),
+        (.speakFaster, ["speak faster", "talk faster", "increase rate",
+                        "increase the rate", "speed up", "faster",
+                        "speak more quickly", "talk more quickly"]),
+        (.speakSlower, ["speak slower", "talk slower", "decrease rate",
+                        "decrease the rate", "slow down", "slower",
+                        "speak more slowly", "talk more slowly"]),
     ]
 
     public static func parse(_ rawText: String) -> ConversationCommand? {
@@ -71,8 +79,18 @@ public enum ConversationCommand: Equatable, Sendable {
             case .detailed: return GoalPatch(verbosity: .notable)
             case .notable, .landmarks: return current == .landmarks ? nil : GoalPatch(verbosity: .landmarks)
             }
-        case .status, .stop, .repeatLast:
+        case .status, .stop, .repeatLast, .speakFaster, .speakSlower:
             return nil
+        }
+    }
+
+    /// The speech-rate step a rate command means, in percentage
+    /// points relative to the system rate; nil for other commands.
+    public func speechRateDelta(from currentPercent: Int) -> Int? {
+        switch self {
+        case .speakFaster: return currentPercent >= 200 ? nil : 25
+        case .speakSlower: return currentPercent <= 50 ? nil : -25
+        default: return nil
         }
     }
 }

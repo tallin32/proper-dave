@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import Foundation
 import MWDATCore
@@ -59,6 +60,35 @@ final class AppModel: ObservableObject {
     }
     private var connectivityFallbackActive = false
     private var serverProbeTask: Task<Void, Never>?
+
+    /// Speech (CONV-12): Dave's own voice/rate/pitch, defaulting to
+    /// plain system behaviour. "" voice = system default voice.
+    @Published var speechVoiceID: String {
+        didSet {
+            save(speechVoiceID, "speechVoiceID")
+            applySpeechSettings()
+            if let voice = AVSpeechSynthesisVoice(identifier: speechVoiceID),
+               voice.voiceTraits.contains(.isPersonalVoice) {
+                AVSpeechSynthesizer.requestPersonalVoiceAuthorization { _ in }
+            }
+        }
+    }
+    @Published var speechRatePercent: Int {
+        didSet { save(speechRatePercent, "speechRatePercent"); applySpeechSettings() }
+    }
+    @Published var speechPitch: Double {
+        didSet { save(speechPitch, "speechPitch"); applySpeechSettings() }
+    }
+
+    private func applySpeechSettings() {
+        speaker.voiceIdentifier = speechVoiceID
+        speaker.ratePercent = speechRatePercent
+        speaker.pitch = Float(speechPitch)
+    }
+
+    func speakSpeechSample() {
+        speaker.speak("This is how Dave sounds. The train to Grand Central is arriving.")
+    }
     let modelPacks = ModelPackManager()
     @Published var sourceKind: FrameSourceKind {
         didSet {
@@ -152,6 +182,9 @@ final class AppModel: ObservableObject {
         backend = Backend(rawValue: d.string(forKey: "backend") ?? "") ?? .demo
         offlineTier = OfflineTier(rawValue: d.string(forKey: "offlineTier") ?? "") ?? .apple
         useLocalModelOnConnectivityLoss = d.bool(forKey: "useLocalModelOnConnectivityLoss")
+        speechVoiceID = d.string(forKey: "speechVoiceID") ?? ""
+        speechRatePercent = d.integer(forKey: "speechRatePercent") == 0 ? 100 : d.integer(forKey: "speechRatePercent")
+        speechPitch = d.double(forKey: "speechPitch") == 0 ? 1.0 : d.double(forKey: "speechPitch")
         sourceKind = FrameSourceKind(rawValue: d.string(forKey: "sourceKind") ?? "") ?? .mock
         serverHost = d.string(forKey: "serverHost") ?? ""
         serverPort = d.integer(forKey: "serverPort") == 0 ? 3283 : d.integer(forKey: "serverPort")
@@ -165,6 +198,7 @@ final class AppModel: ObservableObject {
         heartbeatVolume = d.double(forKey: "heartbeatVolume") == 0 ? 0.25 : d.double(forKey: "heartbeatVolume")
         heartbeatPitch = d.double(forKey: "heartbeatPitch") == 0 ? 660 : d.double(forKey: "heartbeatPitch")
         session = SessionController(log: log)
+        applySpeechSettings()
         heartbeat.interval = heartbeatInterval
         heartbeat.volume = Float(heartbeatVolume)
         heartbeat.frequency = heartbeatPitch
@@ -390,6 +424,17 @@ final class AppModel: ObservableObject {
         if let command = ConversationCommand.parse(text) {
             log.append(component: "session", event: "conversation_command", detail: "\(command)")
             switch command {
+            case .speakFaster, .speakSlower:
+                // Speech settings are global, not goal state: these
+                // work whether or not a watch is running, and the
+                // reply itself is spoken at the new rate.
+                guard let delta = command.speechRateDelta(from: speechRatePercent) else {
+                    return command == .speakFaster
+                        ? "I'm already speaking as fast as I go."
+                        : "I'm already speaking as slowly as I go."
+                }
+                speechRatePercent = min(200, max(50, speechRatePercent + delta))
+                return "Okay — speaking at \(speechRatePercent) percent of the system rate."
             case .status:
                 return session.statusSummary()
             case .stop:
