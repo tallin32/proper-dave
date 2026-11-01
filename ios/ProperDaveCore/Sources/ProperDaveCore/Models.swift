@@ -129,9 +129,19 @@ public struct GoalPatch: Codable, Equatable, Sendable {
 public enum GoalIntent {
     public static let questionMarkers = ["what's in front", "what is in front",
                                          "what do you see", "in front of the camera",
-                                         "in front of me"]
+                                         "in front of me",
+                                         "anything interesting", "anything notable",
+                                         "anything to see", "anything worth seeing",
+                                         "something interesting",
+                                         "what's interesting here", "what is interesting here"]
+    /// Ongoing narration ("…as I pass") is a describe goal even when
+    /// it mentions interest; the markers above are one-shot shapes.
+    public static let ongoingMarkers = ["as i pass", "as i walk", "as i stroll",
+                                        "as we go", "while i walk", "while i stroll",
+                                        "keep telling", "keep describing"]
     public static func questionGoal(for rawText: String) -> GoalContext? {
         let low = rawText.lowercased()
+        guard !ongoingMarkers.contains(where: low.contains) else { return nil }
         guard questionMarkers.contains(where: low.contains) else { return nil }
         return GoalContext(rawText: rawText,
                            targets: ["the scene in front of the camera"], kind: .question)

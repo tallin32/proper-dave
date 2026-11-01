@@ -10,9 +10,9 @@ public enum LocalModelPrompt {
         Convert this request from a blind user into watch targets.
         Return only the structured fields requested by the schema.
         kind is "describe" for open-ended narration ("tell me what I see
-        as I pass", "what's interesting here"), "question" for a one-shot
+        as I pass", "tell me what's interesting as I go"), "question" for a one-shot
         question about the current scene ("what's in front of the camera",
-        "what do you see right now") — a question is answered from the
+        "what do you see right now", "anything interesting here") — a question is answered from the
         first frame and never becomes a watch — otherwise "watch". For describe,
         targets are focus categories (shops, building names, people,
         signs, landmarks) and may be empty; verbosity is landmarks,
@@ -37,6 +37,7 @@ public enum LocalModelPrompt {
         Goal: \(request.goal.rawText)
         Goal kind: \(request.goal.kind.rawValue) (verbosity: \(request.goal.verbosity.rawValue))
         \(request.goal.kind == .describe ? "This is a describe goal: summarise only what is newly notable — named places read verbatim, entrances, obstacles in the path. No exhaustive inventory, no transient litter unless verbosity is detailed, no repeating topics already covered. Describe people only as aggregate activity, never identifying individuals." : "")
+        \(request.goal.kind == .describe && request.lastCallout == nil ? "BASELINE: nothing has been spoken for this goal yet, so nothing here is 'new' or 'already covered' from the user's point of view. Give a brief first description of what is currently here in one or two sentences if the labels, OCR, or image show anything at all. Do not stay silent for lack of novelty; silence-first applies only after this first report." : "")
         Targets: \(request.goal.targets.joined(separator: ", "))
         Exclusions: \(request.goal.exclusions.joined(separator: ", "))
         Machine labels: \(labels.isEmpty ? "none" : labels)

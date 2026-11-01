@@ -149,7 +149,7 @@ public final class SessionController: ObservableObject {
             // a longer floor under the cooldown (CLS-14).
             if parsed.kind == .describe { self.cooldown = max(self.cooldown, 20) }
             log.append(sessionID: sessionID, component: "session", event: "goal_started",
-                       detail: "targets=\(parsed.targets.joined(separator: ","))")
+                       detail: "kind=\(parsed.kind.rawValue) targets=\(parsed.targets.joined(separator: ","))")
             await consume(source: source, goal: parsed, client: evaluator)
         }
     }

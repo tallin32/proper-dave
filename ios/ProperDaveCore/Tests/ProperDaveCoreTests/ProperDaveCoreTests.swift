@@ -385,3 +385,26 @@ extension ProperDaveCoreTests {
         XCTAssertNil(GoalIntent.questionGoal(for: "Tell me when I reach gate B62"))
     }
 }
+
+extension ProperDaveCoreTests {
+    func testSceneInterestQuestionsPrefilter() {
+        XCTAssertEqual(GoalIntent.questionGoal(for: "Anything interesting to see here?")?.kind, .question)
+        XCTAssertEqual(GoalIntent.questionGoal(for: "What's interesting here?")?.kind, .question)
+        // Ongoing narration stays describe-shaped: the pre-filter
+        // must not grab it even though it mentions interest.
+        XCTAssertNil(GoalIntent.questionGoal(for: "Tell me anything interesting as I pass"))
+        XCTAssertNil(GoalIntent.questionGoal(for: "Keep telling me what's interesting as I walk"))
+    }
+
+    func testDescribeBaselinePromptDemandsFirstReport() {
+        let digest = FrameDigest(sessionID: UUID(), sequence: 1, sourceID: "mock",
+                                 labels: [ScoredLabel(name: "laptop", confidence: 0.9)])
+        let goal = GoalContext(rawText: "Anything interesting?", targets: [], kind: .describe)
+        let first = LocalModelPrompt.escalation(EscalationRequest(
+            sessionID: UUID(), goal: goal, digest: digest, lastCallout: nil))
+        XCTAssertTrue(first.contains("BASELINE"), first)
+        let later = LocalModelPrompt.escalation(EscalationRequest(
+            sessionID: UUID(), goal: goal, digest: digest, lastCallout: "A laptop."))
+        XCTAssertFalse(later.contains("BASELINE"), later)
+    }
+}

@@ -215,3 +215,18 @@ def test_chat_parse_prefilters_canonical_question():
     client = make_client(explode)
     goal = client.parse_goal("What is in front of this camera?")
     assert goal.kind == "question"
+
+
+def test_chat_parse_prefilters_scene_interest_question():
+    def explode(request):
+        raise AssertionError("model must not be consulted for scene-interest questions")
+
+    client = make_client(explode)
+    assert client.parse_goal("Anything interesting to see here?").kind == "question"
+    # Ongoing narration is not a one-shot question.
+    try:
+        client.parse_goal("Tell me anything interesting as I pass")
+    except AssertionError:
+        pass  # reached the model, as intended
+    else:
+        raise AssertionError("ongoing narration must reach the model parser")

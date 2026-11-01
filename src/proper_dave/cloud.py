@@ -69,12 +69,20 @@ class FakeCloudModel:
               ("people", "people"), ("sign", "signs"), ("landmark", "landmarks"))
 
     _QUESTION_MARKERS = ("what's in front", "what is in front", "what do you see",
-                         "in front of the camera", "in front of me")
+                         "in front of the camera", "in front of me",
+                         "anything interesting", "anything notable",
+                         "anything to see", "anything worth seeing",
+                         "something interesting",
+                         "what's interesting here", "what is interesting here")
+    _ONGOING_MARKERS = ("as i pass", "as i walk", "as i stroll", "as we go",
+                        "while i walk", "while i stroll",
+                        "keep telling", "keep describing")
 
     def parse_goal(self, raw_text: str) -> GoalContext:
         text = raw_text.strip()
         low = text.lower()
-        if any(m in low for m in self._QUESTION_MARKERS):
+        if (not any(m in low for m in self._ONGOING_MARKERS)
+                and any(m in low for m in self._QUESTION_MARKERS)):
             # One-shot question about the current scene: answer from
             # the first frame, do not set up a watch (TRD-000 §6).
             return GoalContext(rawText=text, targets=["the scene in front of the camera"],

@@ -126,6 +126,7 @@ public struct DemoCloudClient: CloudModelClient {
         let lowered = rawText.lowercased()
         // One-shot question about the current scene (mirrors
         // FakeCloudModel): answer from the first frame, no watch.
+        if let question = GoalIntent.questionGoal(for: rawText) { return question }
         let questionMarkers = ["what's in front", "what is in front", "what do you see",
                                "in front of the camera", "in front of me"]
         if questionMarkers.contains(where: lowered.contains) {

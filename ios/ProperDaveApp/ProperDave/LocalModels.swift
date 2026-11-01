@@ -217,21 +217,21 @@ struct AppleLocalClient: CloudModelClient {
     func parseGoal(_ rawText: String) async throws -> GoalContext {
         try requireAvailable()
         return try await FoundationLocalClient(modelName: modelName) {
-            LanguageModelSession(instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question.")
+            LanguageModelSession(instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question or giving a describe goal's first report.")
         }.parseGoal(rawText)
     }
 
     func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
         try requireAvailable()
         return try await FoundationLocalClient(modelName: modelName) {
-            LanguageModelSession(instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question.")
+            LanguageModelSession(instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question or giving a describe goal's first report.")
         }.evaluate(request)
     }
 
     func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
         try requireAvailable()
         return try await FoundationLocalClient(modelName: modelName) {
-            LanguageModelSession(instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question.")
+            LanguageModelSession(instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question or giving a describe goal's first report.")
         }.refine(current: current, refinement: refinement)
     }
 
