@@ -904,3 +904,181 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(notices, ["The model isn't responding right now. I'll keep watching and try again shortly."])
     }
 }
+
+extension ProperDaveCoreTests {
+    func testConversationCommandParsing() {
+        XCTAssertEqual(ConversationCommand.parse("What are you doing?"), .status)
+        XCTAssertEqual(ConversationCommand.parse("please stop"), .stop)
+        XCTAssertEqual(ConversationCommand.parse("Stop watching."), .stop)
+        XCTAssertEqual(ConversationCommand.parse("Say that again"), .repeatLast)
+        XCTAssertEqual(ConversationCommand.parse("tell me more"), .moreDetail)
+        XCTAssertEqual(ConversationCommand.parse("TELL ME LESS!"), .lessDetail)
+        XCTAssertEqual(ConversationCommand.parse("just the landmarks"), .landmarksOnly)
+        // Goals and refinements must never be swallowed as commands.
+        XCTAssertNil(ConversationCommand.parse("watch for the stop sign"))
+        XCTAssertNil(ConversationCommand.parse("tell me when the train stops"))
+        XCTAssertNil(ConversationCommand.parse("tell me more about the gate number"))
+        XCTAssertNil(ConversationCommand.parse("what are you doing about the elevator"))
+    }
+
+    func testVerbosityPatchSteps() {
+        XCTAssertEqual(ConversationCommand.moreDetail.verbosityPatch(from: .notable)?.verbosity, .detailed)
+        XCTAssertEqual(ConversationCommand.moreDetail.verbosityPatch(from: .landmarks)?.verbosity, .notable)
+        XCTAssertNil(ConversationCommand.moreDetail.verbosityPatch(from: .detailed))
+        XCTAssertEqual(ConversationCommand.lessDetail.verbosityPatch(from: .detailed)?.verbosity, .notable)
+        XCTAssertEqual(ConversationCommand.lessDetail.verbosityPatch(from: .notable)?.verbosity, .landmarks)
+        XCTAssertNil(ConversationCommand.lessDetail.verbosityPatch(from: .landmarks))
+        XCTAssertEqual(ConversationCommand.landmarksOnly.verbosityPatch(from: .detailed)?.verbosity, .landmarks)
+    }
+
+    final class CyclingSceneSource: DigestSource, @unchecked Sendable {
+        let sourceID = "cycling-scene"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        // Fresh topics every digest: a repeating
+                        // cycle would (correctly) die on topic dedupe.
+                        let labels = ["place\(sequence)", "view\(sequence)", "thing\(sequence)"]
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: labels.map { ScoredLabel(name: $0, confidence: 0.9) },
+                            sceneChange: ChangeMetrics(pixelDiff: 1.0)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    final class RefiningClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "refining"
+        private(set) var evaluatedVerbosity: [Verbosity] = []
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .landmarks)
+        }
+        func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+            var patched = current
+            patched.verbosity = .detailed
+            return patched
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            evaluatedVerbosity.append(request.goal.verbosity)
+            return .noCallout(reason: "not_relevant")
+        }
+    }
+
+    @MainActor
+    func testRefinementReachesTheRunningLoop() async throws {
+        // Regression, two stacked bugs: refine() was not a protocol
+        // requirement, so the throwing extension default ran instead
+        // of any client's own refine; and consume() kept judging
+        // against the goal captured at start. Either alone made
+        // mid-goal refinements change nothing.
+        let client = RefiningClient()
+        let session = SessionController(log: EventLog())
+        session.start(goalText: "Narrate the surroundings for me",
+                      client: client, source: CyclingSceneSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.5))
+        session.refineGoal(text: "tell me more")
+        try await Task.sleep(for: .seconds(0.7))
+        session.stop()
+        XCTAssertTrue(client.evaluatedVerbosity.contains(.landmarks),
+                      "before refine: \(client.evaluatedVerbosity)")
+        XCTAssertEqual(client.evaluatedVerbosity.last, .detailed,
+                       "after refine: \(client.evaluatedVerbosity)")
+    }
+
+    @MainActor
+    func testApplyPatchAndStatusSummary() async throws {
+        let log = EventLog()
+        let session = SessionController(log: log)
+        XCTAssertEqual(session.statusSummary(), "I'm not watching right now.")
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.4))
+        XCTAssertTrue(session.applyPatch(GoalPatch(verbosity: .landmarks), origin: "conversation"))
+        XCTAssertEqual(session.goal?.verbosity, .landmarks)
+        let status = session.statusSummary()
+        XCTAssertTrue(status.contains("telling you what I see"), status)
+        XCTAssertTrue(log.events.contains { $0.event == "goal_patched" })
+        session.stop()
+    }
+}
+
+extension ProperDaveCoreTests {
+    final class FlakyConnectivityClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "flaky-server"
+        private var failuresLeft: Int
+        init(failures: Int) { failuresLeft = failures }
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .detailed)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            if failuresLeft > 0 {
+                failuresLeft -= 1
+                throw CloudError.unreachable("connection dropped")
+            }
+            return .callout(text: "A laptop on a desk.", relevance: 0.9)
+        }
+    }
+
+    final class FixedAnswerClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "fixed-answer"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .callout(text: "A kettle by a window.", relevance: 0.9)
+        }
+    }
+
+    @MainActor
+    func testConnectivityEpisodeFiresOnceAndRestores() async throws {
+        let session = SessionController(log: EventLog())
+        var lost = 0
+        var restored = 0
+        session.onConnectivityLost = { lost += 1 }
+        session.onConnectivityRestored = { restored += 1 }
+        session.start(goalText: "Narrate the surroundings for me",
+                      client: FlakyConnectivityClient(failures: 3),
+                      source: CyclingSceneSource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(1.2))
+        session.stop()
+        XCTAssertEqual(lost, 1, "one loss report per episode")
+        XCTAssertEqual(restored, 1, "restored when the same evaluator answers again")
+    }
+
+    final class SwapUnavailableClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "swap-unavailable"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .detailed)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "model_unavailable")
+        }
+    }
+
+    @MainActor
+    func testReplaceEvaluatorSwapsJudgingAndClearsBackoff() async throws {
+        let log = EventLog()
+        let session = SessionController(log: log)
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Narrate the surroundings for me",
+                      client: SwapUnavailableClient(), source: CyclingSceneSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.5))
+        session.replaceEvaluator(FixedAnswerClient(), reason: "connectivity loss")
+        try await Task.sleep(for: .seconds(0.9))
+        session.stop()
+        XCTAssertTrue(spoken.contains("A kettle by a window."), "spoken: \(spoken)")
+        XCTAssertTrue(log.events.contains { $0.event == "evaluator_swapped" })
+    }
+}

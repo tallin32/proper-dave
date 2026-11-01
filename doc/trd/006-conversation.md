@@ -89,6 +89,22 @@ concept in other tools is addressee detection, and this state is it.
   not mute Dave (product doctrine). No cloud voice is ever the
   only voice.
 
+## 4a. Control plane (implemented 2026-11-01)
+
+Conversation is the session's control surface, not just a chat
+transcript. Deterministic commands are routed before any model:
+"what are you doing?" (status composed from session state), "stop",
+"say that again" (last callout verbatim), and detail commands
+("tell me more", "tell me less", "just the landmarks") which patch
+verbosity on the running goal with no model round-trip. Matching is
+whole-utterance so a goal containing command words ("watch for the
+stop sign") is never swallowed. Non-command turns while watching
+refine the goal; the session notice reports success or failure
+honestly. Two latent bugs were found and fixed in the process:
+`refine` was not a protocol requirement (the throwing extension
+default always ran), and the consume loop judged against the goal
+captured at start rather than the refined one.
+
 ## 5. Acceptance
 
 Start a conversation by touch in a noisy room; hold a three-turn

@@ -50,6 +50,15 @@ final class AppModel: ObservableObject {
     @Published var promptText: String { didSet { save(promptText, "promptText") } }
     @Published var backend: Backend { didSet { save(backend.rawValue, "backend") } }
     @Published var offlineTier: OfflineTier { didSet { save(offlineTier.rawValue, "offlineTier") } }
+    /// Connectivity loss mid-goal: announce it, keep the goal alive,
+    /// and — only if the user opted in here — judge with the
+    /// on-device model until the server answers again, then switch
+    /// back. The goal never stops for a network drop.
+    @Published var useLocalModelOnConnectivityLoss: Bool {
+        didSet { save(useLocalModelOnConnectivityLoss, "useLocalModelOnConnectivityLoss") }
+    }
+    private var connectivityFallbackActive = false
+    private var serverProbeTask: Task<Void, Never>?
     let modelPacks = ModelPackManager()
     @Published var sourceKind: FrameSourceKind {
         didSet {
@@ -142,6 +151,7 @@ final class AppModel: ObservableObject {
         promptText = d.string(forKey: "promptText") ?? ""
         backend = Backend(rawValue: d.string(forKey: "backend") ?? "") ?? .demo
         offlineTier = OfflineTier(rawValue: d.string(forKey: "offlineTier") ?? "") ?? .apple
+        useLocalModelOnConnectivityLoss = d.bool(forKey: "useLocalModelOnConnectivityLoss")
         sourceKind = FrameSourceKind(rawValue: d.string(forKey: "sourceKind") ?? "") ?? .mock
         serverHost = d.string(forKey: "serverHost") ?? ""
         serverPort = d.integer(forKey: "serverPort") == 0 ? 3283 : d.integer(forKey: "serverPort")
@@ -168,6 +178,8 @@ final class AppModel: ObservableObject {
         #endif
         session.onCallout = { [weak self] text in self?.speaker.speak(text) }
         session.onNotice = { [weak self] text in self?.speaker.speak(text) }
+        session.onConnectivityLost = { [weak self] in self?.handleConnectivityLoss() }
+        session.onConnectivityRestored = { [weak self] in self?.handleConnectivityRestored() }
         session.onCriticalError = { [weak self] title, description in
             self?.presentCritical(title: title, description: description, isTerminal: true)
         }
@@ -294,20 +306,117 @@ final class AppModel: ObservableObject {
     }
 
     func stopWatching() {
+        serverProbeTask?.cancel(); serverProbeTask = nil
+        connectivityFallbackActive = false
         session.stop()
         speaker.speak("Stopped.")
     }
 
-    /// Conversation PoC turn routing (TRD-006): commands route to
-    /// existing capabilities; anything else goes to a local model
-    /// chat when one is available, else an honest capability reply.
+    /// Connectivity loss mid-goal (owner-specified behaviour):
+    /// announce it once, keep the goal running, judge on-device only
+    /// if the user opted in, and return to the server model when it
+    /// answers again. The goal is never stopped for a network drop.
+    private func handleConnectivityLoss() {
+        guard backend == .server else { return }
+        log.append(component: "cloud", event: "connectivity_loss_handling",
+                   detail: "useLocal=\(useLocalModelOnConnectivityLoss)")
+        if useLocalModelOnConnectivityLoss, let local = localFallbackClient() {
+            connectivityFallbackActive = true
+            session.replaceEvaluator(local, reason: "connectivity loss")
+            speaker.speak("Lost the connection to the server. Continuing with the on-device model — I'll switch back when the server returns.")
+            startServerProbe()
+        } else if useLocalModelOnConnectivityLoss {
+            speaker.speak("Lost the connection to the server, and no on-device model is ready. I'll keep watching and keep trying the server.")
+            startServerProbe()
+        } else {
+            speaker.speak("Lost the connection to the server. I'll keep watching and keep trying.")
+        }
+    }
+
+    private func handleConnectivityRestored() {
+        serverProbeTask?.cancel(); serverProbeTask = nil
+        log.append(component: "cloud", event: "connectivity_restored_handling",
+                   detail: "wasFallback=\(connectivityFallbackActive)")
+        if connectivityFallbackActive {
+            connectivityFallbackActive = false
+            speaker.speak("Connection restored. Back to the server model.")
+        } else {
+            speaker.speak("Connection restored.")
+        }
+    }
+
+    private func localFallbackClient() -> (any CloudModelClient)? {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), AppleOfflineModel.isAvailable { return AppleLocalClient() }
+        #endif
+        if modelPacks.isDownloaded { return DownloadableLocalClient(packManager: modelPacks) }
+        return nil
+    }
+
+    /// While the on-device model judges, poll the server so the
+    /// session can return to it. Silent: the spoken restoration
+    /// comes from the session's restored callback once the server
+    /// evaluator has actually answered again.
+    private func startServerProbe() {
+        serverProbeTask?.cancel()
+        let probe = ServerCloudClient(host: serverHost.isEmpty ? "127.0.0.1" : serverHost,
+                                      port: serverPort, apiKey: apiKey)
+        serverProbeTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard !Task.isCancelled else { return }
+                if await probe.health() {
+                    self?.session.replaceEvaluator(
+                        ServerCloudClient(host: self?.serverHost.isEmpty ?? true ? "127.0.0.1" : (self?.serverHost ?? ""),
+                                          port: self?.serverPort ?? 3283, apiKey: self?.apiKey ?? ""),
+                        reason: "connectivity restored")
+                    return
+                }
+            }
+        }
+    }
+
+    /// Conversation turn routing (TRD-006 control plane):
+    /// deterministic session commands first (status, stop, repeat,
+    /// detail level — answered from state, never a model), then
+    /// one-shot questions, then mid-goal refinement, then new goals,
+    /// then local chat. Anything unrecognized while idle gets an
+    /// honest capability reply, never a made-up one.
     func conversationTurn(_ rawText: String, history: [String]) async -> String {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         let low = text.lowercased()
         guard !text.isEmpty else { return "I didn't catch that." }
-        if session.state == .watching && (low == "stop" || low.hasPrefix("stop watching")) {
-            stopWatching()
-            return "Stopped watching."
+        let watching = session.state == .watching || session.state == .pausedForDebug
+        if let command = ConversationCommand.parse(text) {
+            log.append(component: "session", event: "conversation_command", detail: "\(command)")
+            switch command {
+            case .status:
+                return session.statusSummary()
+            case .stop:
+                guard watching else { return "I'm not watching right now." }
+                stopWatching()
+                return "Stopped watching."
+            case .repeatLast:
+                if let lastCallout = session.lastCallout { return lastCallout }
+                return watching ? "I haven't described anything yet."
+                                : "There's nothing to repeat — I'm not watching right now."
+            case .moreDetail, .lessDetail, .landmarksOnly:
+                guard watching, let goal = session.goal else {
+                    return "I'm not watching right now. Start a goal first, then I can adjust how much I describe."
+                }
+                guard let patch = command.verbosityPatch(from: goal.verbosity) else {
+                    return command == .moreDetail
+                        ? "I'm already describing everything I notice."
+                        : "I'm already keeping it to just the landmarks."
+                }
+                session.applyPatch(patch, origin: "conversation")
+                switch patch.verbosity {
+                case .detailed: return "Okay — I'll describe more of what I notice."
+                case .notable: return "Okay — I'll stick to what's notable."
+                case .landmarks: return "Okay — landmarks only."
+                case .none: return "Okay."
+                }
+            }
         }
         let questionMarkers = ["what's in front", "what is in front", "what do you see",
                                "in front of the camera", "in front of me"]
@@ -316,15 +425,15 @@ final class AppModel: ObservableObject {
             startWatching()
             return "Looking — I'll tell you what I see."
         }
-        if session.state == .watching {
+        if watching {
             refineWatching(text)
-            return "Applying that to the current goal."
+            return "I'll apply that to the current goal if I can."
         }
         if low.hasPrefix("watch") || low.hasPrefix("tell me when") || low.hasPrefix("find")
             || low.contains("describe") || low.contains("tell me what") {
             promptText = text
             startWatching()
-            return "Starting that now."
+            return "Starting that now: “\(text)”"
         }
         if let reply = await localChat(text, history: history) { return reply }
         return "I'm better at watching than chatting. Try “watch for the elevator”, “what's in front of me?”, or “tell me what I see as I pass”."

@@ -18,7 +18,7 @@ struct ConversationView: View {
             VStack(spacing: 0) {
                 List {
                     if turns.isEmpty {
-                        Text("Talk or type. Try “watch for the elevator”, “what's in front of me?”, or “tell me what I see as I pass”. While watching, follow-ups refine the goal.")
+                        Text("Talk or type. Try “watch for the elevator”, “what's in front of me?”, or “tell me what I see as I pass”. While watching: “what are you doing?”, “tell me more”, “just the landmarks”, “say that again”, or “stop”.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
