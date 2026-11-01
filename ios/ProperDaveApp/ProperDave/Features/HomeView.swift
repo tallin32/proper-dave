@@ -78,6 +78,11 @@ struct HomeView: View {
             .onChange(of: dictation.transcript) { _, text in
                 if dictation.isListening { model.promptText = text }
             }
+            .onAppear {
+                dictation.onRoute = { route in
+                    model.log.append(component: "speech", event: "dictation_input", detail: route)
+                }
+            }
         }
     }
 

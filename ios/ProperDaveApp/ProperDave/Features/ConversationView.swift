@@ -72,6 +72,9 @@ struct ConversationView: View {
                 }
             }
             .onAppear {
+                dictation.onRoute = { route in
+                    model.log.append(component: "speech", event: "dictation_input", detail: route)
+                }
                 if turns.isEmpty {
                     speak("Conversation started. Talk, type, or ask me to watch for something.")
                 }
