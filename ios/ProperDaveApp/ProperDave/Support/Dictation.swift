@@ -15,6 +15,12 @@ final class Dictation: ObservableObject {
     private var task: SFSpeechRecognitionTask?
     private var request: SFSpeechAudioBufferRecognitionRequest?
 
+    /// Reports the active input route once listening starts
+    /// ("bluetoothHFP: Ray-Ban Meta" vs the built-in mic), so a
+    /// field log can prove which microphone actually captured a
+    /// dictation. Wired by the owning views to the event log.
+    var onRoute: ((String) -> Void)?
+
     func toggle() { isListening ? stop() : start() }
 
     private func start() {
@@ -33,8 +39,18 @@ final class Dictation: ObservableObject {
     private func begin() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            // Bluetooth HFP is allowed so paired glasses (or any
+            // headset) can be the dictation microphone through the
+            // standard iOS audio route — entirely separate from
+            // Meta's experimental DAT mic (TRD-001 CAP-12). When a
+            // Bluetooth input is present it is preferred; otherwise
+            // the built-in mic is used, as before.
+            try session.setCategory(.record, mode: .measurement,
+                                    options: [.duckOthers, .allowBluetoothHFP])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            if let bluetooth = session.availableInputs?.first(where: { $0.portType == .bluetoothHFP }) {
+                try? session.setPreferredInput(bluetooth)
+            }
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
             self.request = request
@@ -45,6 +61,10 @@ final class Dictation: ObservableObject {
             }
             audioEngine.prepare()
             try audioEngine.start()
+            let inputs = session.currentRoute.inputs
+                .map { "\($0.portType.rawValue):\($0.portName)" }
+                .joined(separator: ", ")
+            onRoute?(inputs.isEmpty ? "no input route" : inputs)
             task = recognizer?.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor in
                     if let result { self?.transcript = result.bestTranscription.formattedString }
