@@ -247,6 +247,9 @@ public final class SessionController: ObservableObject {
                 log.append(sessionID: sessionID, component: "cloud", event: "question_sent", detail: goal.rawText)
                 do {
                     switch try await evaluateWithTimeout(client, request) {
+                    case .callout(let text, _) where Self.isPromptEcho(text):
+                        log.append(sessionID: sessionID, component: "speech", event: "callout_suppressed_echo", detail: text)
+                        if !Task.isCancelled { onNotice?("I couldn't tell what's there from this view.") }
                     case .callout(let text, _):
                         if !Task.isCancelled {
                             lastCallout = text
@@ -343,7 +346,10 @@ public final class SessionController: ObservableObject {
             if Task.isCancelled { break }
             switch result {
             case .success(.callout(let text, _)):
-                if let lastCallout, Self.isDuplicateCallout(text, of: lastCallout) {
+                if Self.isPromptEcho(text) {
+                    log.append(sessionID: sessionID, component: "speech", event: "callout_suppressed_echo", detail: text)
+                    if isDescribeBaseline { speakDescribeBaselineFallback() }
+                } else if let lastCallout, Self.isDuplicateCallout(text, of: lastCallout) {
                     // Never say the same thing twice in a row:
                     // a model that describes every room as "a
                     // cluttered area" must not become a loop.
@@ -400,6 +406,20 @@ public final class SessionController: ObservableObject {
         state = .watching
         log.append(sessionID: sessionID, component: "capture", event: "capture_resumed_debug")
     }
+    /// Prompt-echo check: a model that copies its directions into
+    /// the answer text ("The on-device gate has already
+    /// established…", field log 03:19) must never be spoken. The
+    /// phrases are boilerplate from our own prompts/instructions,
+    /// never legitimate scene descriptions.
+    nonisolated static func isPromptEcho(_ text: String) -> Bool {
+        let low = text.lowercased()
+        return ["on-device gate", "not yours to re-make", "silence preference",
+                "silence is preferred", "these instructions", "these directions",
+                "no change occurred", "materially changed — that",
+                "direct scene report", "direct question",
+                "nothing has been spoken for this goal"].contains { low.contains($0) }
+    }
+
     /// Near-duplicate speech check: same words, or one text's
     /// words almost wholly contained in the other's ("The scene
     /// is a cluttered area…" vs "A cluttered area…").
