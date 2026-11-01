@@ -361,7 +361,26 @@ public final class SessionController: ObservableObject {
                 }
             case .success(.noCallout(let reason)):
                 log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
-                if isDescribeBaseline { speakDescribeBaselineFallback() }
+                if reason == "model_unavailable" || reason == "rate_limited" {
+                    // A backend health signal, not a judgement
+                    // about the scene: it must never trigger the
+                    // dark/blank fallback (field log 04:29, first
+                    // server session — every escalation returned
+                    // one of these and the baseline announced a
+                    // void). Back off, keep the baseline owed, and
+                    // say what actually happened, once.
+                    modelBackoffUntil = Date().addingTimeInterval(reason == "rate_limited" ? 10 : 30)
+                    log.append(sessionID: sessionID, component: "cloud", event: "model_backoff",
+                               detail: "escalations paused after server said \(reason)")
+                    if isDescribeBaseline {
+                        describeBaselineAttempted = false
+                        onNotice?(reason == "rate_limited"
+                            ? "The model is rate limited right now. I'll keep watching and try again shortly."
+                            : "The model isn't responding right now. I'll keep watching and try again shortly.")
+                    }
+                } else if isDescribeBaseline {
+                    speakDescribeBaselineFallback()
+                }
             case .failure(let error):
                 log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
                 let lowered = error.localizedDescription.lowercased()

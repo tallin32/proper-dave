@@ -44,7 +44,7 @@ Dev server against a workstation-local model, or a frontier API:
 
 ```sh
 PROPER_DAVE_MODEL_BACKEND=local uv run proper-dave-server
-# defaults: http://localhost:11434/v1, model llama3.2-vision:11b
+# defaults: http://localhost:11434/v1, model qwen2.5vl:7b
 PROPER_DAVE_MODEL_BACKEND=frontier PROPER_DAVE_FRONTIER_BASE_URL=... \
   PROPER_DAVE_FRONTIER_MODEL=... PROPER_DAVE_FRONTIER_API_KEY=... \
   uv run proper-dave-server
