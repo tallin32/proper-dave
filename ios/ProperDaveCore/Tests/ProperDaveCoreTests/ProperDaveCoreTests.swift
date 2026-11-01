@@ -638,3 +638,50 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(spoken, ["A cluttered area with various objects."], "spoken: \(spoken)")
     }
 }
+
+extension ProperDaveCoreTests {
+    final class DelayedClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "delayed"
+        let delay: Double
+        init(delay: Double) { self.delay = delay }
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            try await Task.sleep(for: .seconds(delay))
+            return .callout(text: "A late answer.", relevance: 0.9)
+        }
+    }
+
+    @MainActor
+    func testEvaluatorTimeoutFallsBackInsteadOfFreezing() async throws {
+        // Field log 02:56: Qwen's first evaluate ran past 32s with
+        // the consume loop blocked behind it.
+        let session = SessionController(log: EventLog())
+        session.evaluatorTimeoutSeconds = 0.2
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: DelayedClient(delay: 5), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(1.5))
+        session.stop()
+        XCTAssertEqual(spoken, ["laptop in view."], "spoken: \(spoken)")
+    }
+
+    @MainActor
+    func testNothingIsSpokenAfterGoalEnds() async throws {
+        // Field log 02:57: a baseline fallback fired after
+        // goal_ended, announcing a phantom scene to nobody.
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: DelayedClient(delay: 0.4), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.15))
+        session.stop()
+        try await Task.sleep(for: .seconds(1.0))
+        XCTAssertTrue(spoken.isEmpty, "spoken after end: \(spoken)")
+    }
+}
