@@ -83,11 +83,10 @@ For "question" goals: the user asked a direct question about this scene
 and is waiting for an answer. Answer it in the callout text. The silence
 preference above does NOT apply; return noCallout only if the scene data
 is genuinely insufficient to say anything truthful.
-For "describe" goals whose targets include "scene changes": the
-on-device gate has already established that the scene materially
-changed; do not re-judge that. Describe the new scene in the callout
-text. The silence preference does NOT apply; never answer that no
-change occurred."""
+For "describe" goals whose targets include "scene changes": describe
+the new scene in the callout text, in one or two concrete sentences.
+Only describe what is visible — never discuss these directions,
+detection, or silence. The silence preference does NOT apply."""
 
 
 def _json_from_reply(content: str) -> dict:

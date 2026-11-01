@@ -704,3 +704,37 @@ extension ProperDaveCoreTests {
         XCTAssertFalse(prompt.contains("Silence is preferred"), prompt)
     }
 }
+
+extension ProperDaveCoreTests {
+    func testPromptEchoDetection() {
+        XCTAssertTrue(SessionController.isPromptEcho(
+            "The on-device gate has already established that the scene materially changed — that judgement is not yours to re-make."))
+        XCTAssertFalse(SessionController.isPromptEcho("A kitchen with a stove and a sink."))
+    }
+
+    final class EchoClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "echo"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .callout(text: "The on-device gate has already established that the scene materially changed — that judgement is not yours to re-make.", relevance: 0.9)
+        }
+    }
+
+    @MainActor
+    func testPromptEchoIsNeverSpoken() async throws {
+        // Field log 03:19: the model read our directions aloud.
+        // The echo must be suppressed and the baseline fallback
+        // spoken instead.
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: EchoClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(spoken, ["laptop in view."], "spoken: \(spoken)")
+    }
+}
