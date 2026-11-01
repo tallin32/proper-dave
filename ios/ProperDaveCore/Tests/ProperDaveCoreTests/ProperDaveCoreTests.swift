@@ -788,3 +788,34 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(notices, ["The model is rate limited right now. I'll keep watching and try again shortly."])
     }
 }
+
+extension ProperDaveCoreTests {
+    final class UnavailableClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "unavailable"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "model_unavailable")
+        }
+    }
+
+    @MainActor
+    func testServerUnavailableBaselineDoesNotAnnounceVoid() async throws {
+        // Field log 04:29: server said model_unavailable (Ollama
+        // could not load its model) and the baseline announced
+        // "dark or blank" about a lit room.
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        var notices: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.onNotice = { notices.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: UnavailableClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertTrue(spoken.isEmpty, "spoken: \(spoken)")
+        XCTAssertEqual(notices, ["The model isn't responding right now. I'll keep watching and try again shortly."])
+    }
+}

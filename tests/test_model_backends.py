@@ -137,7 +137,7 @@ def test_env_defaults_to_fake():
 
 def test_env_local_defaults_to_workstation_ollama():
     client = model_from_env({"PROPER_DAVE_MODEL_BACKEND": "local"})
-    assert client.model_name == "local:llama3.2-vision:11b"
+    assert client.model_name == "local:qwen2.5vl:7b"
 
 
 def test_env_frontier_needs_key_model_base():

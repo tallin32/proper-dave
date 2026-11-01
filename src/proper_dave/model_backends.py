@@ -6,7 +6,7 @@ answers is a server-side configuration choice (CLD-04):
 - ``fake``     — deterministic stand-in (default; no key, no network).
 - ``local``    — a model on the operator's own machine, reached through
   an OpenAI-compatible chat endpoint (e.g. Ollama on the workstation
-  running the dev server: ``llama3.2-vision``).
+  running the dev server: ``qwen2.5vl``).
 - ``frontier`` — a hosted OpenAI-compatible API. Its key lives only in
   the server's environment, never in the app (TRD-004 §5).
 
@@ -269,7 +269,7 @@ def model_from_env(env: Mapping[str, str] | None = None) -> CloudModelClient:
     base_url = env.get(f"{prefix}_BASE_URL") or (
         "http://localhost:11434/v1" if backend == "local" else "")
     model = env.get(f"{prefix}_MODEL") or (
-        "llama3.2-vision:11b" if backend == "local" else "")
+        "qwen2.5vl:7b" if backend == "local" else "")
     api_key = env.get(f"{prefix}_API_KEY") or ("ollama" if backend == "local" else "")
     missing = [name for name, value in
                (("BASE_URL", base_url), ("MODEL", model), ("API_KEY", api_key)) if not value]
