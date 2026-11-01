@@ -88,6 +88,21 @@ concept in other tools is addressee detection, and this state is it.
   glitch under congestion and die in subways, and the subway may
   not mute Dave (product doctrine). No cloud voice is ever the
   only voice.
+- **CONV-12** Speech settings (voice, rate) live in the device
+  settings, not in Dave: they are the user's preferences, already
+  tuned, and Dave diverging from the rest of the phone by default
+  would read as a defect. The one legitimate per-app difference
+  is callout pacing — a user may run VoiceOver fast for
+  navigation but want one-shot scene descriptions slower — so a
+  future in-app override, if built, is a *relative* callout-rate
+  adjustment ("descriptions: system / slower / much slower")
+  scoped to Dave's callouts only, defaulting to system. It is a
+  user-facing setting when built, not a Developer Mode knob.
+  Design caution: the first field tester of this product is not
+  necessarily a representative speech-settings user; validate
+  any speech-setting surface against a broader range of blind
+  users before treating preferences observed in the field as
+  defaults.
 
 ## 4a. Control plane (implemented 2026-11-01)
 
