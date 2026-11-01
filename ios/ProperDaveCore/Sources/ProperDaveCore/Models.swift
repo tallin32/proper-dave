@@ -145,8 +145,19 @@ public enum GoalIntent {
                                            "keep me updated", "continue telling",
                                            "continue describing", "continue to tell",
                                            "continuously"]
+    /// Scene-change narration ("keep letting me know when the
+    /// scene changes") is a describe goal even though it contains
+    /// no scene-question wording at all: the user is asking to be
+    /// kept posted as the view changes, not to watch for a thing.
+    public static let sceneChangeMarkers = ["when the scene changes", "when anything changes",
+                                            "when things change", "when the view changes",
+                                            "as the scene changes", "as things change",
+                                            "keep letting me know"]
     public static func intentGoal(for rawText: String) -> GoalContext? {
         let low = rawText.lowercased()
+        if sceneChangeMarkers.contains(where: low.contains) {
+            return GoalContext(rawText: rawText, targets: [], kind: .describe)
+        }
         guard questionMarkers.contains(where: low.contains) else { return nil }
         if continuingMarkers.contains(where: low.contains) {
             return GoalContext(rawText: rawText, targets: [], kind: .describe)

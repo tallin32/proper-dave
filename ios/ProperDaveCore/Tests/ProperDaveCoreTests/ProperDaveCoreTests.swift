@@ -486,3 +486,36 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(q.kind, .question)
     }
 }
+
+extension ProperDaveCoreTests {
+    func testSceneChangeNarrationIsDescribeNotWatch() {
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep letting me know when the scene changes.")?.kind, .describe)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Let me know when anything changes")?.kind, .describe)
+        // A specific arrival is still a watch for the model parser:
+        // the deterministic floor must not grab it.
+        XCTAssertNil(GoalIntent.intentGoal(for: "Let me know when the train to Grand Central arrives"))
+    }
+}
+
+extension ProperDaveCoreTests {
+    @MainActor
+    func testSceneChangeGoalStartsAsDescribeWithoutModelParse() async throws {
+        // Field log 01:58: "Keep letting me know when the scene
+        // changes." died at goal_parse_failed when the model parser
+        // returned a watch with no targets. The deterministic floor
+        // must classify it before any parser is consulted.
+        let session = SessionController(log: EventLog())
+        var errors: [String] = []
+        var spoken: [String] = []
+        session.onCriticalError = { title, _ in errors.append(title) }
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(session.goal?.kind, .describe)
+        XCTAssertTrue(errors.isEmpty, "errors: \(errors)")
+        XCTAssertEqual(spoken, ["laptop in view."])
+    }
+}

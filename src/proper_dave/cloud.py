@@ -74,6 +74,10 @@ class FakeCloudModel:
                          "anything to see", "anything worth seeing",
                          "something interesting",
                          "what's interesting here", "what is interesting here")
+    _SCENE_CHANGE_MARKERS = ("when the scene changes", "when anything changes",
+                             "when things change", "when the view changes",
+                             "as the scene changes", "as things change",
+                             "keep letting me know")
     _CONTINUING_MARKERS = ("as i pass", "as i walk", "as i stroll", "as we go",
                            "while i walk", "while i stroll",
                            "keep telling", "keep describing", "keep me posted",
@@ -84,6 +88,8 @@ class FakeCloudModel:
     def parse_goal(self, raw_text: str) -> GoalContext:
         text = raw_text.strip()
         low = text.lower()
+        if any(m in low for m in self._SCENE_CHANGE_MARKERS):
+            return GoalContext(rawText=text, targets=[], kind="describe")
         if any(m in low for m in self._QUESTION_MARKERS):
             if any(m in low for m in self._CONTINUING_MARKERS):
                 return GoalContext(rawText=text, targets=[], kind="describe")

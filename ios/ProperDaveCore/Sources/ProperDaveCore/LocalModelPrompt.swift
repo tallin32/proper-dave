@@ -11,7 +11,8 @@ public enum LocalModelPrompt {
         Return only the structured fields requested by the schema.
         kind is "describe" for open-ended narration ("tell me what I see
         as I pass", "tell me what's interesting as I go", "continue telling
-        me what is in front of the camera"), "question" for a one-shot
+        me what is in front of the camera", "keep letting me know when the
+        scene changes"), "question" for a one-shot
         question about the current scene ("what's in front of the camera",
         "what do you see right now", "anything interesting here") — a question is answered from the
         first frame and never becomes a watch — otherwise "watch". For describe,
