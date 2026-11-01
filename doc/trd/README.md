@@ -23,6 +23,7 @@ Nothing here is code; implementation starts only after this set is reviewed.
 | [TRD-003](003-cloud-adapter.md) | Turning an escalation into at most one callout |
 | [TRD-004](004-api-contract.md) | The MVP server contract |
 | [TRD-005](005-instrumentation.md) | Debug logging, critical-error reporting, Easter egg |
+| [TRD-006](006-conversation.md) | Conversation mode, wake-word-only listening state, Dave's voice |
 
 Conventions: *shall* is normative; every `XXX-nn` requirement is testable on its own;
 defaults flagged *(reversible)* can be changed in one place without redesign.
