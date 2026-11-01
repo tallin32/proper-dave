@@ -470,3 +470,19 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(spoken, ["laptop, desk in view."])
     }
 }
+
+extension ProperDaveCoreTests {
+    func testOneShotVsContinuingFrontOfCamera() {
+        XCTAssertEqual(GoalIntent.intentGoal(for: "What is currently in front of this camera?")?.kind, .question)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Continue telling me what is in front of this camera.")?.kind, .describe)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep telling me what you see")?.kind, .describe)
+        XCTAssertNil(GoalIntent.questionGoal(for: "Continue telling me what is in front of this camera."))
+    }
+
+    func testDemoParserKeepsContinuingNarrationRunning() async throws {
+        let g = try await DemoCloudClient().parseGoal("Continue telling me what is in front of this camera.")
+        XCTAssertEqual(g.kind, .describe)
+        let q = try await DemoCloudClient().parseGoal("What is currently in front of this camera?")
+        XCTAssertEqual(q.kind, .question)
+    }
+}

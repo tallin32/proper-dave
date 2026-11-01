@@ -42,7 +42,8 @@ PARSE_SYSTEM = """You convert a blind user's spoken goal into structured watch t
 Reply with JSON only, no prose, in exactly this shape:
 {"kind": "watch"|"question"|"describe", "verbosity": "landmarks"|"notable"|"detailed", "targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
 kind is "describe" for open-ended narration ("tell me what I see as I pass",
-"tell me what's interesting as I go"), "question" for a one-shot question about the
+"tell me what's interesting as I go", "continue telling me what is in front
+of the camera"), "question" for a one-shot question about the
 current scene ("what's in front of the camera", "what do you see right
 now") — a question is answered from the first frame and never becomes
 a watch — else "watch". For describe, targets are focus categories
@@ -131,15 +132,18 @@ class ChatModelClient:
             raise ModelOutputError("Model reply had no message content") from exc
 
     # -- CloudModelClient ----------------------------------------------
-    _QUESTION_MARKERS = ("what's in front", "what is in front", "what do you see",
-                         "in front of the camera", "in front of me",
+    _QUESTION_MARKERS = ("what's in front", "what is in front", "what do you see", "what you see",
+                         "in front of the camera", "in front of this camera", "in front of me",
                          "anything interesting", "anything notable",
                          "anything to see", "anything worth seeing",
                          "something interesting",
                          "what's interesting here", "what is interesting here")
-    _ONGOING_MARKERS = ("as i pass", "as i walk", "as i stroll", "as we go",
-                        "while i walk", "while i stroll",
-                        "keep telling", "keep describing")
+    _CONTINUING_MARKERS = ("as i pass", "as i walk", "as i stroll", "as we go",
+                           "while i walk", "while i stroll",
+                           "keep telling", "keep describing", "keep me posted",
+                           "keep me updated", "continue telling",
+                           "continue describing", "continue to tell",
+                           "continuously")
 
     def parse_goal(self, raw_text: str) -> GoalContext:
         # Deterministic floor for the canonical question shape
@@ -147,8 +151,11 @@ class ChatModelClient:
         # returns "camera", "sign text", or no targets must not get
         # to veto "what is in front of this camera?"
         low = raw_text.lower()
-        if (not any(m in low for m in self._ONGOING_MARKERS)
-                and any(m in low for m in self._QUESTION_MARKERS)):
+        if any(m in low for m in self._QUESTION_MARKERS):
+            if any(m in low for m in self._CONTINUING_MARKERS):
+                # Same scene wording, continuing intent: describe,
+                # not a one-shot question that ends after one answer.
+                return GoalContext(rawText=raw_text.strip(), targets=[], kind="describe")
             return GoalContext(rawText=raw_text.strip(),
                                targets=["the scene in front of the camera"],
                                kind="question")

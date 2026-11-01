@@ -122,10 +122,10 @@ public final class SessionController: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             let parsed: GoalContext
-            if let question = GoalIntent.questionGoal(for: goalText) {
+            if let intent = GoalIntent.intentGoal(for: goalText) {
                 log.append(sessionID: sessionID, component: "session", event: "goal_intent_prefilter",
-                           detail: "question")
-                parsed = question
+                           detail: intent.kind.rawValue)
+                parsed = intent
             } else {
                 do { parsed = try await parser.parseGoal(goalText) }
             catch {

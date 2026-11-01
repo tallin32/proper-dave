@@ -128,23 +128,35 @@ public struct GoalPatch: Codable, Equatable, Sendable {
 /// it does not catch still goes to the model parser.
 public enum GoalIntent {
     public static let questionMarkers = ["what's in front", "what is in front",
-                                         "what do you see", "in front of the camera",
-                                         "in front of me",
+                                         "what do you see", "what you see", "in front of the camera",
+                                         "in front of this camera", "in front of me",
                                          "anything interesting", "anything notable",
                                          "anything to see", "anything worth seeing",
                                          "something interesting",
                                          "what's interesting here", "what is interesting here"]
-    /// Ongoing narration ("…as I pass") is a describe goal even when
-    /// it mentions interest; the markers above are one-shot shapes.
-    public static let ongoingMarkers = ["as i pass", "as i walk", "as i stroll",
-                                        "as we go", "while i walk", "while i stroll",
-                                        "keep telling", "keep describing"]
-    public static func questionGoal(for rawText: String) -> GoalContext? {
+    /// Continuing narration ("…as I pass", "continue telling me…")
+    /// over the same scene wording is a describe goal, not a
+    /// one-shot question: the difference between "what is in front
+    /// of this camera?" and "continue telling me what is in front
+    /// of this camera" is exactly one of these markers.
+    public static let continuingMarkers = ["as i pass", "as i walk", "as i stroll",
+                                           "as we go", "while i walk", "while i stroll",
+                                           "keep telling", "keep describing", "keep me posted",
+                                           "keep me updated", "continue telling",
+                                           "continue describing", "continue to tell",
+                                           "continuously"]
+    public static func intentGoal(for rawText: String) -> GoalContext? {
         let low = rawText.lowercased()
-        guard !ongoingMarkers.contains(where: low.contains) else { return nil }
         guard questionMarkers.contains(where: low.contains) else { return nil }
+        if continuingMarkers.contains(where: low.contains) {
+            return GoalContext(rawText: rawText, targets: [], kind: .describe)
+        }
         return GoalContext(rawText: rawText,
                            targets: ["the scene in front of the camera"], kind: .question)
+    }
+    public static func questionGoal(for rawText: String) -> GoalContext? {
+        guard let goal = intentGoal(for: rawText), goal.kind == .question else { return nil }
+        return goal
     }
 }
 

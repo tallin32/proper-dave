@@ -223,10 +223,8 @@ def test_chat_parse_prefilters_scene_interest_question():
 
     client = make_client(explode)
     assert client.parse_goal("Anything interesting to see here?").kind == "question"
-    # Ongoing narration is not a one-shot question.
-    try:
-        client.parse_goal("Tell me anything interesting as I pass")
-    except AssertionError:
-        pass  # reached the model, as intended
-    else:
-        raise AssertionError("ongoing narration must reach the model parser")
+    # Continuing narration over the same scene wording is a
+    # describe goal, deterministically — not a one-shot question.
+    assert client.parse_goal("Tell me anything interesting as I pass").kind == "describe"
+    assert client.parse_goal("Continue telling me what is in front of this camera.").kind == "describe"
+    assert client.parse_goal("What is currently in front of this camera?").kind == "question"
