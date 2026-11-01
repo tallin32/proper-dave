@@ -519,3 +519,48 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(spoken, ["laptop in view."])
     }
 }
+
+extension ProperDaveCoreTests {
+    private func sceneGoal() -> GoalContext {
+        GoalContext(rawText: "Keep letting me know when the scene changes.",
+                    targets: ["scene changes"], kind: .describe)
+    }
+    func testSceneChangeGoalEscalatesOnGenericSceneSwap() {
+        // Field report: laptop -> window -> face produced no
+        // callout, because stroll saliency scores those topics
+        // 0.40/0.40/0.15 against a 0.60 threshold. For a
+        // scene-change goal the change itself is the relevance.
+        let window = [digest(labels: ["laptop", "desk"], pixel: 0.1)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["window", "curtain"], pixel: 0.7),
+                                         window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertTrue(d.isEscalation, "\(d)")
+        let (d2, _) = Classifier.evaluate(digest: digest(labels: ["person", "face"], pixel: 0.7),
+                                          window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertTrue(d2.isEscalation, "\(d2)")
+        // A clear swap inside the cooldown still fires: otherwise
+        // it is absorbed into the window and never reported.
+        let (d3, _) = Classifier.evaluate(digest: digest(labels: ["window", "curtain"], pixel: 0.7),
+                                          window: window, goal: sceneGoal(), secondsSinceEscalation: 2)
+        XCTAssertTrue(d3.isEscalation, "\(d3)")
+    }
+    func testSceneChangeGoalStaysSilentWhenNothingChanges() {
+        let window = [digest(labels: ["laptop"], pixel: 0.02)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["laptop"], pixel: 0.02),
+                                         window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertEqual(d, .suppress(reason: "noMaterialChange"))
+    }
+    func testStrollDescribeStillGatesGenericTopics() {
+        // The scene-change bypass must not leak into stroll goals.
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["laptop"], pixel: 0.6),
+                                         window: [digest(labels: ["desk"])], goal: dgoal(),
+                                         secondsSinceEscalation: 30)
+        XCTAssertEqual(d, .suppress(reason: "notSalient"))
+    }
+    func testSceneChangePromptFramesFirstReportAsStartingScene() {
+        let request = EscalationRequest(sessionID: UUID(), goal: sceneGoal(),
+                                        digest: digest(labels: ["laptop"]), recentDigests: [])
+        let prompt = LocalModelPrompt.escalation(request)
+        XCTAssertTrue(prompt.contains("starting scene"), prompt)
+        XCTAssertTrue(prompt.contains("never as a change"), prompt)
+    }
+}

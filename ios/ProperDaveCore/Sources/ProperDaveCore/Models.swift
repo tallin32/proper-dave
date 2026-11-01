@@ -68,6 +68,17 @@ public struct GoalContext: Codable, Equatable, Sendable {
         self.kind = kind; self.verbosity = verbosity
     }
 
+    /// A describe goal whose subject is the scene changing
+    /// ("keep letting me know when the scene changes"): here the
+    /// change itself is the relevance, so topic saliency (built
+    /// for strolls — signs, entrances, named places) must not gate
+    /// it. Derived from wording, never a separate wire field.
+    public var isSceneChangeGoal: Bool {
+        let words = Set((targets + [rawText]).joined(separator: " ").lowercased()
+            .split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        return words.contains("scene") && !words.intersection(["change", "changes", "changed"]).isEmpty
+    }
+
     private enum CodingKeys: String, CodingKey {
         case rawText, kind, verbosity, targets, exclusions, progressLandmarks, expiresAt
     }
@@ -156,7 +167,7 @@ public enum GoalIntent {
     public static func intentGoal(for rawText: String) -> GoalContext? {
         let low = rawText.lowercased()
         if sceneChangeMarkers.contains(where: low.contains) {
-            return GoalContext(rawText: rawText, targets: [], kind: .describe)
+            return GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
         }
         guard questionMarkers.contains(where: low.contains) else { return nil }
         if continuingMarkers.contains(where: low.contains) {

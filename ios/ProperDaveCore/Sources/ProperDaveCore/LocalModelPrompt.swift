@@ -40,6 +40,7 @@ public enum LocalModelPrompt {
         Goal kind: \(request.goal.kind.rawValue) (verbosity: \(request.goal.verbosity.rawValue))
         \(request.goal.kind == .describe ? "This is a describe goal: summarise only what is newly notable — named places read verbatim, entrances, obstacles in the path. No exhaustive inventory, no transient litter unless verbosity is detailed, no repeating topics already covered. Describe people only as aggregate activity, never identifying individuals." : "")
         \(request.goal.kind == .describe && request.lastCallout == nil ? "BASELINE: nothing has been spoken for this goal yet, so nothing here is 'new' or 'already covered' from the user's point of view. Give a brief first description of what is currently here in one or two sentences if the labels, OCR, or image show anything at all. Do not stay silent for lack of novelty; silence-first applies only after this first report." : "")
+        \(request.goal.isSceneChangeGoal ? "This goal asks to be told when the scene changes. An escalation means the view has materially changed: describe the new scene in one or two sentences. The first report establishes the starting scene — present it as what is here now, never as a change and never as 'no change', because there is no earlier scene to compare with." : "")
         Targets: \(request.goal.targets.joined(separator: ", "))
         Exclusions: \(request.goal.exclusions.joined(separator: ", "))
         Machine labels: \(labels.isEmpty ? "none" : labels)

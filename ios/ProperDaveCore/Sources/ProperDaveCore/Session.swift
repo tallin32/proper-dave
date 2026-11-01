@@ -146,8 +146,11 @@ public final class SessionController: ObservableObject {
             }
             goal = parsed
             // Describe narrates on scene transitions, not frame churn:
-            // a longer floor under the cooldown (CLS-14).
-            if parsed.kind == .describe { self.cooldown = max(self.cooldown, 20) }
+            // a longer floor under the cooldown (CLS-14). Scene-change
+            // goals are the exception — their whole point is prompt
+            // notice when the view swaps, so they keep the caller's
+            // cooldown rather than the stroll floor.
+            if parsed.kind == .describe && !parsed.isSceneChangeGoal { self.cooldown = max(self.cooldown, 20) }
             log.append(sessionID: sessionID, component: "session", event: "goal_started",
                        detail: "kind=\(parsed.kind.rawValue) targets=\(parsed.targets.joined(separator: ","))")
             await consume(source: source, goal: parsed, client: evaluator)

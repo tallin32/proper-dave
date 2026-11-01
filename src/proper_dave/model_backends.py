@@ -71,7 +71,11 @@ Reply with JSON only, no prose, in exactly one of these shapes:
 For "describe" goals: summarise only what is newly notable (named places
 verbatim, entrances, obstacles), never an exhaustive inventory, never
 transient litter unless verbosity is "detailed", never repeat covered
-topics, and describe people only as aggregate activity. Exception: when
+topics, and describe people only as aggregate activity. If targets
+include "scene changes", an escalation means the view has materially
+changed: describe the new scene; the first report (lastCallout null)
+establishes the starting scene and must never be framed as "no change".
+Exception: when
 lastCallout is null nothing has been spoken yet — give a brief first
 description of what is currently here instead of staying silent for
 lack of novelty.
@@ -157,12 +161,12 @@ class ChatModelClient:
         # to veto "what is in front of this camera?"
         low = raw_text.lower()
         if any(m in low for m in self._SCENE_CHANGE_MARKERS):
-            return GoalContext(rawText=raw_text.strip(), targets=[], kind="describe")
+            return GoalContext(rawText=raw_text.strip(), targets=["scene changes"], kind="describe")
         if any(m in low for m in self._QUESTION_MARKERS):
             if any(m in low for m in self._CONTINUING_MARKERS):
                 # Same scene wording, continuing intent: describe,
                 # not a one-shot question that ends after one answer.
-                return GoalContext(rawText=raw_text.strip(), targets=[], kind="describe")
+                return GoalContext(rawText=raw_text.strip(), targets=["scene changes"], kind="describe")
             return GoalContext(rawText=raw_text.strip(),
                                targets=["the scene in front of the camera"],
                                kind="question")

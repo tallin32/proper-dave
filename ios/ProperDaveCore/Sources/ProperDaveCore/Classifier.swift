@@ -121,6 +121,26 @@ public enum Classifier {
                 if topics.isEmpty { return (.escalateFrame(confidence: max(sal, 0.5), landmark: landmark), scores) }
                 return (.escalateDigest(confidence: max(sal, 0.5), landmark: landmark), scores)
             }
+            if goal.isSceneChangeGoal {
+                // The change is the subject: a laptop giving way to
+                // a window to a face must speak even though none of
+                // those topics is stroll-salient, and returning to
+                // an earlier scene is still a change, so topic
+                // dedupe does not apply either. A clear swap (half
+                // the label set turned over) also bypasses the
+                // cooldown — otherwise a scene presented inside the
+                // cooldown is absorbed into the comparison window
+                // and never reported at all.
+                if let since = secondsSinceEscalation, since < cooldown, change < 0.5 {
+                    return (.suppress(reason: "cooldown"), scores)
+                }
+                if change < changeThreshold { return (.suppress(reason: "noMaterialChange"), scores) }
+                let changeScores = Scores(change: change, relevance: change, landmark: landmark, topics: topics)
+                if topics.isEmpty && change >= majorChangeThreshold {
+                    return (.escalateFrame(confidence: change, landmark: landmark), changeScores)
+                }
+                return (.escalateDigest(confidence: change, landmark: landmark), changeScores)
+            }
             if let since = secondsSinceEscalation, since < cooldown, change < majorChangeThreshold {
                 return (.suppress(reason: "cooldown"), scores)
             }
