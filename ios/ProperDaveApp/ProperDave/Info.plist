@@ -64,6 +64,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Proper Dave uses the camera to watch for what you asked about.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Proper Dave uses motion activity (for example, walking or still) to understand how you are moving while it watches for you.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Proper Dave uses the microphone only when you choose dictation, or enable the experimental glasses microphone.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

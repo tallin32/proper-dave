@@ -43,6 +43,7 @@ final class AppModel: ObservableObject {
     let session: SessionController
     let speaker = Speaker()
     let heartbeat = HeartbeatPlayer()
+    private let motionProbe = MotionProbe()
     private var stateSink: AnyCancellable?
 
     @Published var promptText: String { didSet { save(promptText, "promptText") } }
@@ -176,6 +177,14 @@ final class AppModel: ObservableObject {
             self?.speaker.speak("Switched to \(sourceID == "iphone-camera" ? "phone camera" : sourceID).")
             self?.glassesStatus = "Glasses stopped sending; switched to the phone camera."
         }
+        // Log-only motion hint: activity changes land in the JSONL
+        // next to classifier decisions so field sessions can prove
+        // (or refute) walking/stationary correlations before motion
+        // steers anything. No behaviour reads this yet.
+        motionProbe.onEvent = { [weak self] event, detail in
+            self?.log.append(component: "motion", event: event, detail: detail)
+        }
+        motionProbe.start()
         refreshGlassesState()
         // $state emits the incoming value before the stored property
         // changes, so the new state must be passed through, not re-read.
