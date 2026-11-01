@@ -118,6 +118,68 @@ interfaces keep room for them):
 - **Incident reporting.** Crashes and failures the user cannot solve
   should eventually be sendable as incident reports to the operator
   (TRD-005 §9) — always by explicit user action, never silently.
+- **Continuous-monitoring assumption (Settings toggle?).** Tools in
+  this space tend to bake in one posture: continual monitoring, with
+  separate tools (Be My AI is the example) meant for one-shots.
+  Proper Dave currently decides per goal, from the user's wording —
+  one-shot question vs continuing describe/watch (see the
+  deterministic intent floor in `GoalIntent`; TRD-002/TRD-003 own the
+  parsing rules). Worth considering a user-facing Settings toggle,
+  "assume continuous monitoring", that sets the default reading of
+  *ambiguous* phrasings (continuous unless the wording is plainly
+  singular, or vice versa), with the explicit wording always
+  winning and a mid-goal refinement able to flip a running goal.
+  Open questions if taken up: which way the default ships, whether
+  the toggle lives beside or behind Developer Mode, and how it
+  interacts with conversation mode's defaults (TRD-006). Recorded
+  as a consideration only; nothing in the MVP implements it, and
+  goal-kind detection remains language-driven until the owner
+  decides.
+- **Postures, not one posture (prior-art note).** Field testing
+  keeps surfacing distinct *postures* that share a pipeline but
+  want different answers to "what counts as change" and "what
+  earns speech": (a) moving — stroll narration (topic saliency,
+  dedupe, long cooldown); (b) stationary, waiting for a specific
+  event — watch (baseline reading, then silence until the target
+  or a progress marker); (c) stationary, ambient — scene-change
+  narration (the change itself is the relevance); (d) one-shot
+  questions; and (e) **process watching** — a pot of stock going
+  simmer → rolling boil → boil-over — which is a recorded *gap*:
+  the change is gradual and labels stay stable ("pot" throughout),
+  so a label/OCR-turnover change score can sit silent while the
+  state changes. Filling (e) likely needs temporal frame
+  difference or periodic frame escalation for process-shaped
+  goals; undecided and unimplemented. Prior art marks the hole
+  rather than the design (examples, not templates): ScribeMe's
+  Live Assist narrates continuously after one prompt, and the
+  owner's firsthand experience of it was periodic absence
+  narration — "I still don't see an exit" every few seconds —
+  consistent with frames going to an LLM with history and no
+  silence gate (the owner's inference; the mechanism is not
+  public). OOrion splits the postures into separate tools chosen
+  up front (Find an item, from a fixed object list, with
+  spatial-audio guidance; Search for text; Nearby Objects) and is
+  genuinely strong at locate-and-guide, which Proper Dave does
+  not attempt. Be My AI is the one-shot end of the spectrum.
+  The hole Proper Dave is aimed at: one goal language across
+  postures, a cheap on-device gate deciding what earns a model
+  call and what earns speech, silence as the default rather
+  than a failure, and the silence policy itself user-adjustable
+  (verbosity today; the toggle above and a plainer "narrate
+  more/less" control are the open form of it). Naming the
+  postures here so posture-specific defaults are tuned
+  deliberately, per posture, instead of discovered by accident
+  — which is how the first three were found. Posture is
+  *inferred from the goal's wording* (that inference is what
+  goal parsing is), never declared by the user in Settings:
+  making the user announce "I am now walking" would rebuild
+  the prior art's choose-a-tool-first burden inside one app.
+  Device signals the system already has (motion activity,
+  frame stability) may later refine an inferred posture's
+  defaults automatically, but they are hints under the
+  wording, never a user-facing mode switch; the Settings
+  toggle recorded above governs only how ambiguous wording
+  defaults, which is a different thing.
 
 ## 8. Build order
 
