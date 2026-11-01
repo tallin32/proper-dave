@@ -171,7 +171,11 @@ public enum GoalIntent {
         }
         guard questionMarkers.contains(where: low.contains) else { return nil }
         if continuingMarkers.contains(where: low.contains) {
-            return GoalContext(rawText: rawText, targets: [], kind: .describe)
+            // "Keep telling me what you see" is an explicit request
+            // for ongoing narration, so generic visible topics earn
+            // speech at the detailed threshold rather than waiting
+            // for stroll-notable landmarks.
+            return GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .detailed)
         }
         return GoalContext(rawText: rawText,
                            targets: ["the scene in front of the camera"], kind: .question)

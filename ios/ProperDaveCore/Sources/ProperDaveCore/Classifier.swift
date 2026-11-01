@@ -155,6 +155,18 @@ public enum Classifier {
                         || Double(current.symmetricDifference(prev).count) / Double(union.count) <= 0.5
                 }
                 if !window.isEmpty && !stable {
+                    // In motion no scene survives two digests, so
+                    // waiting for stability would mean never
+                    // announcing. After a sustained interval with a
+                    // major change, announce the current passing
+                    // scene as a snapshot instead (at most once per
+                    // interval, because this resets the escalation
+                    // clock). Stationary scene presentation still
+                    // uses the stable path and announces sooner.
+                    if let since = secondsSinceEscalation, since >= 15, change >= majorChangeThreshold {
+                        let changeScores = Scores(change: change, relevance: change, landmark: landmark, topics: topics)
+                        return (.escalateFrame(confidence: change, landmark: landmark), changeScores)
+                    }
                     return (.suppress(reason: "sceneUnstable"), scores)
                 }
                 let changeScores = Scores(change: change, relevance: change, landmark: landmark, topics: topics)
