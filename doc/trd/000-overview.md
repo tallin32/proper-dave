@@ -10,6 +10,18 @@ that matters to the user's current request, and is otherwise silent. The
 failure it exists to fix is the cheerful loop — "I still don't see Gate
 B62" — every few seconds.
 
+## 1a. On the name
+
+The codename "Proper Dave" is deliberate. The assistive-technology
+market is crowded with names in the register of (deliberately
+hyperbolic example) "VisionEyeMiracleCureSightHelperWonderGuide
+3000" — names that promise a sighted person's idea of a miracle
+to people who did not ask for one. Dave promises nothing except
+competence and restraint: a proper job, done when it matters,
+silent otherwise. The product's tone — plain-spoken, unpatronising,
+no cheerfulness loop — is encoded in the name. If the codename ever
+changes, the register must not.
+
 ## 2. What the MVP must prove
 
 1. Indoors: "tell me when the elevator arrives at my floor" produces one
