@@ -232,6 +232,10 @@ struct MLXDownloadableLocalClient: CloudModelClient {
     func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
         try await foundationClient().refine(current: current, refinement: refinement)
     }
+
+    func chat(userText: String, history: [String]) async throws -> String {
+        try await foundationClient().chat(userText: userText, history: history)
+    }
 }
 
 struct DownloadableLocalClient: CloudModelClient {
@@ -252,6 +256,12 @@ struct DownloadableLocalClient: CloudModelClient {
     func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
         if #available(iOS 27.0, *) {
             return try await MLXDownloadableLocalClient(packManager: packManager).refine(current: current, refinement: refinement)
+        }
+        throw OfflineModelError.unavailable("The downloadable offline model requires iOS 27 or later.")
+    }
+    func chat(userText: String, history: [String]) async throws -> String {
+        if #available(iOS 27.0, *) {
+            return try await MLXDownloadableLocalClient(packManager: packManager).chat(userText: userText, history: history)
         }
         throw OfflineModelError.unavailable("The downloadable offline model requires iOS 27 or later.")
     }
