@@ -469,6 +469,91 @@ extension ProperDaveCoreTests {
         session.stop()
         XCTAssertEqual(spoken, ["laptop, desk in view."])
     }
+
+    final class WarmupThenSceneSource: DigestSource, @unchecked Sendable {
+        let sourceID = "warmup-then-scene"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        let labels = sequence == 1
+                            ? [ScoredLabel(name: "night_sky", confidence: 0.2)]
+                            : [ScoredLabel(name: "laptop", confidence: 0.9)]
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: labels, sceneChange: ChangeMetrics(pixelDiff: 0.1)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    final class TooSoonClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "too-soon"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "too_soon")
+        }
+    }
+
+    @MainActor
+    func testDescribeBaselineWaitsForSettledFrame() async throws {
+        // Field log 05:56: the baseline was judged on the first,
+        // still-exposing warmup frame and announced a black view.
+        // Digest #1 (and low-confidence labels) must be skipped.
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: WarmupThenSceneSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(spoken, ["laptop in view."], "spoken: \(spoken)")
+    }
+
+    @MainActor
+    func testTooSoonNeverTriggersBaselineFallback() async throws {
+        // The server's anti-storm backstop is not a scene judgement:
+        // it must not make the baseline announce a void or labels.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: TooSoonClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertTrue(spoken.isEmpty, "spoken: \(spoken)")
+        XCTAssertFalse(log.events.contains { $0.event == "describe_baseline_fallback" })
+    }
+
+    @MainActor
+    func testModelCallFinishedLogNamesTheAnsweringModel() async throws {
+        // Field log 05:32: a session believed to be on a frontier
+        // model was answered by a deterministic stand-in, and the
+        // log could not say so. The finished-call event must name
+        // the client that answered.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        let finished = log.events.filter { $0.event == "model_call_finished" }
+        XCTAssertFalse(finished.isEmpty)
+        XCTAssertTrue(finished.allSatisfy { $0.detail.contains("model=silent-describe") },
+                      "details: \(finished.map(\.detail))")
+    }
 }
 
 extension ProperDaveCoreTests {
