@@ -169,7 +169,17 @@ interfaces keep room for them):
   more/less" control are the open form of it). Naming the
   postures here so posture-specific defaults are tuned
   deliberately, per posture, instead of discovered by accident
-  — which is how the first three were found.
+  — which is how the first three were found. Posture is
+  *inferred from the goal's wording* (that inference is what
+  goal parsing is), never declared by the user in Settings:
+  making the user announce "I am now walking" would rebuild
+  the prior art's choose-a-tool-first burden inside one app.
+  Device signals the system already has (motion activity,
+  frame stability) may later refine an inferred posture's
+  defaults automatically, but they are hints under the
+  wording, never a user-facing mode switch; the Settings
+  toggle recorded above governs only how ambiguous wording
+  defaults, which is a different thing.
 
 ## 8. Build order
 
