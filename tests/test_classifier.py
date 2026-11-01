@@ -150,3 +150,13 @@ def test_scene_change_goal_escalates_on_generic_swap():
     d4 = evaluate(digest(labels=["window", "curtain"], pixel=0.7),
                   [digest(labels=["laptop", "desk"], pixel=0.1)], goal, since_escalation=30)
     assert (d4.kind, d4.reason) == ("suppress", "sceneUnstable")
+
+
+def test_scene_change_stable_across_label_flicker():
+    goal = GoalContext(rawText="Keep letting me know when the scene changes.",
+                       targets=["scene changes"], kind="describe")
+    window = [digest(labels=["laptop", "desk"], pixel=0.1),
+              digest(labels=["stove", "sink", "cabinet"], pixel=0.7)]
+    d = evaluate(digest(labels=["stove", "counter", "cabinet"], pixel=0.7),
+                 window, goal, since_escalation=30)
+    assert d.kind in ("escalateDigest", "escalateFrame")

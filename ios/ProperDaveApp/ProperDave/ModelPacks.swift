@@ -233,12 +233,26 @@ struct MLXDownloadableLocalClient: CloudModelClient {
         let model = QwenModelCache.model(directory: directory)
         return FoundationLocalClient(modelName: modelName) {
             LanguageModelSession(model: model,
-                                 instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question or giving a describe goal's first report.")
+                                 instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question, giving a describe goal's first report, or describing a scene change the prompt directs you to report.")
         }
     }
 
     func parseGoal(_ rawText: String) async throws -> GoalContext {
         try await foundationClient().parseGoal(rawText)
+    }
+
+    /// One throwaway structured call so the container load (the
+    /// bulk of the field-observed 40s) happens at download or
+    /// selection time, not inside the first live escalation.
+    func warmUp() async {
+        guard packManager.isDownloaded, let client = try? foundationClient() else { return }
+        let digest = FrameDigest(sessionID: UUID(), sequence: 1, sourceID: "warmup",
+                                 labels: [ScoredLabel(name: "room", confidence: 0.9)])
+        let request = EscalationRequest(
+            sessionID: UUID(),
+            goal: GoalContext(rawText: "warmup", targets: ["scene changes"], kind: .describe),
+            digest: digest)
+        _ = try? await client.evaluate(request)
     }
 
     func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
@@ -268,6 +282,11 @@ struct DownloadableLocalClient: CloudModelClient {
             return try await MLXDownloadableLocalClient(packManager: packManager).evaluate(request)
         }
         throw OfflineModelError.unavailable("The downloadable offline model requires iOS 27 or later.")
+    }
+    func warmUp() async {
+        if #available(iOS 27.0, *) {
+            await MLXDownloadableLocalClient(packManager: packManager).warmUp()
+        }
     }
     func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
         if #available(iOS 27.0, *) {

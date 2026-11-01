@@ -58,6 +58,18 @@ public enum LocalModelPrompt {
               here. Return noCallout only if the labels, OCR, and any attached
               image are genuinely insufficient to say anything truthful.
               """
+            : request.goal.isSceneChangeGoal
+            ? """
+              DIRECT SCENE REPORT: the on-device gate has already
+              established that the scene materially changed — that
+              judgement is not yours to re-make, and the silence
+              preference does NOT apply here. Describe the new scene
+              in one or two short, concrete sentences from the
+              labels, OCR, and any attached image. Return noCallout
+              only if they are genuinely insufficient to say
+              anything truthful. Never answer that no change
+              occurred or that silence is preferred.
+              """
             : """
               Decide whether this exact moment deserves one short spoken callout.
               Silence is preferred. Never report that a target is merely absent.

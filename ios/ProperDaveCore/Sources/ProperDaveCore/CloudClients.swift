@@ -108,6 +108,11 @@ public extension CloudModelClient {
     func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
         throw RefinementError.unparseable
     }
+
+    /// Load/warm whatever the client needs before its first real
+    /// call, so a 40-second first-load doesn't land inside a live
+    /// goal (Qwen field log 03:07). Default: nothing to warm.
+    func warmUp() async {}
 }
 
 /// Offline stand-in so the app demos with no server (same behaviour family

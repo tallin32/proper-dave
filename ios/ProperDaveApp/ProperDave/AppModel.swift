@@ -45,6 +45,7 @@ final class AppModel: ObservableObject {
     let heartbeat = HeartbeatPlayer()
     private let motionProbe = MotionProbe()
     private var stateSink: AnyCancellable?
+    private var packSink: AnyCancellable?
 
     @Published var promptText: String { didSet { save(promptText, "promptText") } }
     @Published var backend: Backend { didSet { save(backend.rawValue, "backend") } }
@@ -189,6 +190,20 @@ final class AppModel: ObservableObject {
         // $state emits the incoming value before the stored property
         // changes, so the new state must be passed through, not re-read.
         stateSink = session.$state.sink { [weak self] state in self?.applyHeartbeat(state: state) }
+        // Warm the downloadable model when its download completes
+        // (and at launch if already installed and selected), so
+        // the container load doesn't land inside a live goal.
+        packSink = modelPacks.$state.sink { [weak self] state in
+            guard state == .downloaded else { return }
+            self?.warmOfflineModelIfSelected()
+        }
+        warmOfflineModelIfSelected()
+    }
+
+    private func warmOfflineModelIfSelected() {
+        guard backend == .offline, offlineTier == .downloadable else { return }
+        let client = cloudClient
+        Task { await client.warmUp() }
     }
 
     /// Heartbeat sounds only while a watch is live (and never while the
