@@ -377,3 +377,11 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(session.state, .ended)
     }
 }
+
+extension ProperDaveCoreTests {
+    func testQuestionIntentPrefilter() {
+        let q = GoalIntent.questionGoal(for: "What is in front of this camera?")
+        XCTAssertEqual(q?.kind, .question)
+        XCTAssertNil(GoalIntent.questionGoal(for: "Tell me when I reach gate B62"))
+    }
+}

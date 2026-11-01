@@ -206,3 +206,12 @@ def test_chat_refine_uses_model_reply():
     current = client.parse_goal("describe the stroll")
     patched = client.refine_goal(current, "keep it to the big landmarks please")
     assert patched.verbosity == "landmarks" and patched.raw_text == current.raw_text
+
+
+def test_chat_parse_prefilters_canonical_question():
+    def explode(request):
+        raise AssertionError("model must not be consulted for the canonical question")
+
+    client = make_client(explode)
+    goal = client.parse_goal("What is in front of this camera?")
+    assert goal.kind == "question"

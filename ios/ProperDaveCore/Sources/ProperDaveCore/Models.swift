@@ -119,6 +119,25 @@ public struct GoalPatch: Codable, Equatable, Sendable {
     }
 }
 
+/// Deterministic intent pre-filter for the canonical one-shot
+/// question shape. A model parser classifies most phrasings, but
+/// "what is in front of this camera?" must never depend on a
+/// model's mood: field parses variously returned targets "camera",
+/// "sign text", and (fatally) watch-with-no-targets. This is a
+/// floor under the model, not a vocabulary for the user — anything
+/// it does not catch still goes to the model parser.
+public enum GoalIntent {
+    public static let questionMarkers = ["what's in front", "what is in front",
+                                         "what do you see", "in front of the camera",
+                                         "in front of me"]
+    public static func questionGoal(for rawText: String) -> GoalContext? {
+        let low = rawText.lowercased()
+        guard questionMarkers.contains(where: low.contains) else { return nil }
+        return GoalContext(rawText: rawText,
+                           targets: ["the scene in front of the camera"], kind: .question)
+    }
+}
+
 public struct EscalationRequest: Codable, Sendable {
     public var sessionID: UUID
     public var goal: GoalContext
