@@ -685,3 +685,22 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(spoken.isEmpty, "spoken after end: \(spoken)")
     }
 }
+
+extension ProperDaveCoreTests {
+    func testSceneChangeStableAcrossLabelFlicker() {
+        // Held scene, Vision labels flickering between digests:
+        // current resembles the digest two back, not the last one.
+        let window = [digest(labels: ["laptop", "desk"], pixel: 0.1),
+                      digest(labels: ["stove", "sink", "cabinet"], pixel: 0.7)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["stove", "counter", "cabinet"], pixel: 0.7),
+                                         window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertTrue(d.isEscalation, "\(d)")
+    }
+    func testSceneChangePromptIsDirectNotSilent() {
+        let request = EscalationRequest(sessionID: UUID(), goal: sceneGoal(),
+                                        digest: digest(labels: ["stove"]), recentDigests: [])
+        let prompt = LocalModelPrompt.escalation(request)
+        XCTAssertTrue(prompt.contains("DIRECT SCENE REPORT"), prompt)
+        XCTAssertFalse(prompt.contains("Silence is preferred"), prompt)
+    }
+}

@@ -142,12 +142,20 @@ public enum Classifier {
                 // rate-limiting). A new scene must survive one
                 // digest — still present in the next frame — before
                 // it is announced.
-                if let previous = window.last {
-                    let prev = texts(previous)
+                // Stability is "resembles either of the last two
+                // digests", not the immediate predecessor: Vision's
+                // label set flickers between frames of the *same*
+                // held scene (field log 03:09 — deliberate point-
+                // at-something-new died as sceneUnstable), while a
+                // genuine swing-through resembles none of them.
+                let stable = window.suffix(2).contains { past in
+                    let prev = texts(past)
                     let union = current.union(prev)
-                    let churn = union.isEmpty ? 0
-                        : Double(current.symmetricDifference(prev).count) / Double(union.count)
-                    if churn > 0.5 { return (.suppress(reason: "sceneUnstable"), scores) }
+                    return union.isEmpty
+                        || Double(current.symmetricDifference(prev).count) / Double(union.count) <= 0.5
+                }
+                if !window.isEmpty && !stable {
+                    return (.suppress(reason: "sceneUnstable"), scores)
                 }
                 let changeScores = Scores(change: change, relevance: change, landmark: landmark, topics: topics)
                 if topics.isEmpty && change >= majorChangeThreshold {
