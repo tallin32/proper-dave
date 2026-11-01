@@ -202,9 +202,19 @@ public final class SessionController: ObservableObject {
             if state == .pausedForDebug { continue }
             guard state == .watching else { break }
             if goal.kind == .question {
-                // One-shot (TRD-000 §6): answer from the first frame,
-                // then end. Never becomes a watch, never gated by
-                // saliency — the user asked about *this* scene.
+                // One-shot (TRD-000 §6): answer from the first
+                // *usable* frame, then end. A camera's first digest
+                // is routinely black/still-exposing; answering from
+                // it produced field noCallouts ("No visual
+                // information is present", 01:27). Wait for a digest
+                // carrying any label or OCR, up to 3 digests, then
+                // answer from the latest regardless.
+                let usable = !digest.labels.isEmpty || !digest.ocrText.isEmpty
+                if !usable && received < 3 {
+                    log.append(sessionID: sessionID, component: "capture", event: "question_waiting_frame",
+                               detail: "digest #\(received) has no labels or OCR yet")
+                    continue
+                }
                 escalationCount += 1
                 let image = source.imageData(for: digest)?.base64EncodedString()
                 let request = EscalationRequest(sessionID: sessionID, goal: goal, digest: digest,
