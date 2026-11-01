@@ -180,6 +180,34 @@ interfaces keep room for them):
   wording, never a user-facing mode switch; the Settings
   toggle recorded above governs only how ambiguous wording
   defaults, which is a different thing.
+- **Smooth tool selection, if inference ever stops paying.**
+  OOrion's select-a-tool shape may not be a failure of
+  imagination: deciding what to run has real overhead —
+  inference latency, misclassification cost, an ever-growing
+  marker/prompt surface (the field logs in this repo are the
+  evidence). Proper Dave currently spends that overhead so the
+  user doesn't have to. If the balance ever tips and explicit
+  tool/posture selection becomes necessary, the recorded
+  constraint is that selection must be *smooth*, not a return
+  to menus: changeable mid-session, without taking the phone
+  out of a pocket, hands-free with the glasses on. Sketch of
+  the shape (not a design): a spoken override inside
+  conversation/wake state ("Dave, just describe", "watch for
+  this instead") or a glasses-native gesture, a one-phrase
+  spoken or earcon confirmation, the current posture
+  announceable on demand ("what are you doing?"), and a switch
+  that preserves session and goal context the way a source
+  switch does (TRD-001 CAP-14) rather than restarting. Explicit
+  selection would remain an override layered on inference,
+  never the entry requirement — the user who just states a
+  goal should never meet a tool picker first. Open questions:
+  what metric declares inference no longer paying (misroute
+  rate in field logs? parse latency?), which hands-free inputs
+  the glasses actually offer (TRD-001; glasses audio is still
+  experimental), and how an override interacts with mid-goal
+  refinement (TRD-002 CLS-16) and conversation turns (TRD-006).
+  Recorded as a direction with a trigger condition; nothing
+  implements it.
 
 ## 8. Build order
 
