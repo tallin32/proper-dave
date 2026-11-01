@@ -217,7 +217,7 @@ struct MLXDownloadableLocalClient: CloudModelClient {
             })
         return FoundationLocalClient(modelName: modelName) {
             LanguageModelSession(model: model,
-                                 instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question.")
+                                 instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question or giving a describe goal's first report.")
         }
     }
 

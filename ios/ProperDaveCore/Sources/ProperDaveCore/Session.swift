@@ -122,10 +122,10 @@ public final class SessionController: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             let parsed: GoalContext
-            if let question = GoalIntent.questionGoal(for: goalText) {
+            if let intent = GoalIntent.intentGoal(for: goalText) {
                 log.append(sessionID: sessionID, component: "session", event: "goal_intent_prefilter",
-                           detail: "question")
-                parsed = question
+                           detail: intent.kind.rawValue)
+                parsed = intent
             } else {
                 do { parsed = try await parser.parseGoal(goalText) }
             catch {
@@ -146,10 +146,13 @@ public final class SessionController: ObservableObject {
             }
             goal = parsed
             // Describe narrates on scene transitions, not frame churn:
-            // a longer floor under the cooldown (CLS-14).
-            if parsed.kind == .describe { self.cooldown = max(self.cooldown, 20) }
+            // a longer floor under the cooldown (CLS-14). Scene-change
+            // goals are the exception — their whole point is prompt
+            // notice when the view swaps, so they keep the caller's
+            // cooldown rather than the stroll floor.
+            if parsed.kind == .describe && !parsed.isSceneChangeGoal { self.cooldown = max(self.cooldown, 20) }
             log.append(sessionID: sessionID, component: "session", event: "goal_started",
-                       detail: "targets=\(parsed.targets.joined(separator: ","))")
+                       detail: "kind=\(parsed.kind.rawValue) targets=\(parsed.targets.joined(separator: ","))")
             await consume(source: source, goal: parsed, client: evaluator)
         }
     }
@@ -200,6 +203,7 @@ public final class SessionController: ObservableObject {
         currentSource = source
         log.append(sessionID: sessionID, component: "capture", event: "capture_started", detail: source.sourceID)
         var received = 0
+        var describeBaselineAttempted = false
         for await digest in source.stream(sessionID: sessionID, interval: interval) {
             // A cancelled task belongs to a superseded source: stop eating
             // its frames even though the session itself is still watching.
@@ -245,6 +249,20 @@ public final class SessionController: ObservableObject {
                 source.stop()
                 return
             }
+            if goal.kind == .describe && !describeBaselineAttempted {
+                // The baseline report is owed on the first *usable*
+                // scene, not the camera's first black warmup digest
+                // (same trap as one-shot questions). Wait for a digest
+                // carrying any label or OCR, up to 3 digests; after
+                // that the scene is reported as-is — a genuine dark
+                // or blank view is itself the first description.
+                let usable = !digest.labels.isEmpty || !digest.ocrText.isEmpty
+                if !usable && received < 3 {
+                    log.append(sessionID: sessionID, component: "capture", event: "describe_waiting_frame",
+                               detail: "digest #\(received) has no labels or OCR yet")
+                    continue
+                }
+            }
             let since = lastEscalationAt.map { Date().timeIntervalSince($0) }
             let (decision, scores) = Classifier.evaluate(
                 digest: digest, window: window, goal: goal, lastCallout: lastCallout,
@@ -266,6 +284,22 @@ public final class SessionController: ObservableObject {
                                             recentDigests: window, image: image,
                                             lastCallout: lastCallout)
             log.append(sessionID: sessionID, component: "cloud", event: "escalation_sent", detail: decision.name)
+            // A describe goal owes the user one first report even
+            // when the model stays silent — including "the view is
+            // dark or blank", which is a truthful description of a
+            // void, not a "target not found" narration. The wording
+            // comes only from the digest itself, never invented.
+            let isDescribeBaseline = goal.kind == .describe && !describeBaselineAttempted && lastCallout == nil
+            describeBaselineAttempted = true
+            func speakDescribeBaselineFallback() {
+                let visible = digest.labels.map(\.name) + digest.ocrText.map(\.text)
+                let text = visible.isEmpty
+                    ? "I can't make anything out from the camera right now. The view looks dark or blank."
+                    : visible.prefix(3).joined(separator: ", ") + " in view."
+                lastCallout = text
+                log.append(sessionID: sessionID, component: "speech", event: "describe_baseline_fallback", detail: text)
+                onCallout?(text)
+            }
             do {
                 switch try await client.evaluate(request) {
                 case .callout(let text, _):
@@ -274,9 +308,11 @@ public final class SessionController: ObservableObject {
                     onCallout?(text)
                 case .noCallout(let reason):
                     log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
+                    if isDescribeBaseline { speakDescribeBaselineFallback() }
                 }
             } catch {
                 log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
+                if isDescribeBaseline { speakDescribeBaselineFallback() }
             }
         }
         guard state == .watching, !Task.isCancelled else { return }

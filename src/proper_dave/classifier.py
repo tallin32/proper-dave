@@ -126,6 +126,13 @@ def evaluate(digest, window, goal, *, last_callout=None, since_escalation=None,
         return Decision("suppress", "classifierError")
 
 
+def _is_scene_change_goal(goal) -> bool:
+    words: set[str] = set()
+    for phrase in list(goal.targets) + [goal.raw_text]:
+        words |= _tokens(phrase)
+    return "scene" in words and bool(words & {"change", "changes", "changed"})
+
+
 def _run(digest, window, goal, last_callout, since, reported, announced, cooldown_s):
     now = _texts(digest)
     seen: set[str] = set()
@@ -149,6 +156,16 @@ def _run(digest, window, goal, last_callout, since, reported, announced, cooldow
     if goal.kind == "describe":
         sal, topics = saliency(digest, gained, goal, announced)
         kw = dict(change=change, relevance=sal, saliency=sal, topics=topics)
+        if _is_scene_change_goal(goal):
+            # Mirrors Classifier.swift: the change itself is the
+            # relevance; stroll saliency and topic dedupe don't gate.
+            if since is not None and since < cooldown_s and change < 0.5:
+                return Decision("suppress", "cooldown", **kw)
+            if change < CHANGE_THRESHOLD:
+                return Decision("suppress", "noMaterialChange", **kw)
+            kw = dict(change=change, relevance=change, saliency=sal, topics=topics)
+            kind = "escalateFrame" if not topics and change >= MAJOR_CHANGE else "escalateDigest"
+            return Decision(kind, confidence=change, **kw)
         if not window:
             # Baseline: the user just asked to be told what is here.
             # The first digest always escalates; saliency gates only

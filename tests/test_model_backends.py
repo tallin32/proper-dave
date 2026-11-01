@@ -215,3 +215,24 @@ def test_chat_parse_prefilters_canonical_question():
     client = make_client(explode)
     goal = client.parse_goal("What is in front of this camera?")
     assert goal.kind == "question"
+
+
+def test_chat_parse_prefilters_scene_interest_question():
+    def explode(request):
+        raise AssertionError("model must not be consulted for scene-interest questions")
+
+    client = make_client(explode)
+    assert client.parse_goal("Anything interesting to see here?").kind == "question"
+    # Continuing narration over the same scene wording is a
+    # describe goal, deterministically — not a one-shot question.
+    assert client.parse_goal("Tell me anything interesting as I pass").kind == "describe"
+    assert client.parse_goal("Continue telling me what is in front of this camera.").kind == "describe"
+    assert client.parse_goal("What is currently in front of this camera?").kind == "question"
+
+
+def test_chat_parse_prefilters_scene_change_narration():
+    def explode(request):
+        raise AssertionError("model must not be consulted for scene-change narration")
+
+    client = make_client(explode)
+    assert client.parse_goal("Keep letting me know when the scene changes.").kind == "describe"

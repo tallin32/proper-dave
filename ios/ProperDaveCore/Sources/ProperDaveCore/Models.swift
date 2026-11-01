@@ -68,6 +68,17 @@ public struct GoalContext: Codable, Equatable, Sendable {
         self.kind = kind; self.verbosity = verbosity
     }
 
+    /// A describe goal whose subject is the scene changing
+    /// ("keep letting me know when the scene changes"): here the
+    /// change itself is the relevance, so topic saliency (built
+    /// for strolls — signs, entrances, named places) must not gate
+    /// it. Derived from wording, never a separate wire field.
+    public var isSceneChangeGoal: Bool {
+        let words = Set((targets + [rawText]).joined(separator: " ").lowercased()
+            .split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        return words.contains("scene") && !words.intersection(["change", "changes", "changed"]).isEmpty
+    }
+
     private enum CodingKeys: String, CodingKey {
         case rawText, kind, verbosity, targets, exclusions, progressLandmarks, expiresAt
     }
@@ -128,13 +139,46 @@ public struct GoalPatch: Codable, Equatable, Sendable {
 /// it does not catch still goes to the model parser.
 public enum GoalIntent {
     public static let questionMarkers = ["what's in front", "what is in front",
-                                         "what do you see", "in front of the camera",
-                                         "in front of me"]
-    public static func questionGoal(for rawText: String) -> GoalContext? {
+                                         "what do you see", "what you see", "in front of the camera",
+                                         "in front of this camera", "in front of me",
+                                         "anything interesting", "anything notable",
+                                         "anything to see", "anything worth seeing",
+                                         "something interesting",
+                                         "what's interesting here", "what is interesting here"]
+    /// Continuing narration ("…as I pass", "continue telling me…")
+    /// over the same scene wording is a describe goal, not a
+    /// one-shot question: the difference between "what is in front
+    /// of this camera?" and "continue telling me what is in front
+    /// of this camera" is exactly one of these markers.
+    public static let continuingMarkers = ["as i pass", "as i walk", "as i stroll",
+                                           "as we go", "while i walk", "while i stroll",
+                                           "keep telling", "keep describing", "keep me posted",
+                                           "keep me updated", "continue telling",
+                                           "continue describing", "continue to tell",
+                                           "continuously"]
+    /// Scene-change narration ("keep letting me know when the
+    /// scene changes") is a describe goal even though it contains
+    /// no scene-question wording at all: the user is asking to be
+    /// kept posted as the view changes, not to watch for a thing.
+    public static let sceneChangeMarkers = ["when the scene changes", "when anything changes",
+                                            "when things change", "when the view changes",
+                                            "as the scene changes", "as things change",
+                                            "keep letting me know"]
+    public static func intentGoal(for rawText: String) -> GoalContext? {
         let low = rawText.lowercased()
+        if sceneChangeMarkers.contains(where: low.contains) {
+            return GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
+        }
         guard questionMarkers.contains(where: low.contains) else { return nil }
+        if continuingMarkers.contains(where: low.contains) {
+            return GoalContext(rawText: rawText, targets: [], kind: .describe)
+        }
         return GoalContext(rawText: rawText,
                            targets: ["the scene in front of the camera"], kind: .question)
+    }
+    public static func questionGoal(for rawText: String) -> GoalContext? {
+        guard let goal = intentGoal(for: rawText), goal.kind == .question else { return nil }
+        return goal
     }
 }
 

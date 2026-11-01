@@ -42,7 +42,9 @@ PARSE_SYSTEM = """You convert a blind user's spoken goal into structured watch t
 Reply with JSON only, no prose, in exactly this shape:
 {"kind": "watch"|"question"|"describe", "verbosity": "landmarks"|"notable"|"detailed", "targets": ["..."], "exclusions": ["..."], "progressLandmarks": "..." or null}
 kind is "describe" for open-ended narration ("tell me what I see as I pass",
-"what's interesting here"), "question" for a one-shot question about the
+"tell me what's interesting as I go", "continue telling me what is in front
+of the camera", "keep letting me know when the scene changes"), "question"
+for a one-shot question about the
 current scene ("what's in front of the camera", "what do you see right
 now") — a question is answered from the first frame and never becomes
 a watch — else "watch". For describe, targets are focus categories
@@ -69,7 +71,14 @@ Reply with JSON only, no prose, in exactly one of these shapes:
 For "describe" goals: summarise only what is newly notable (named places
 verbatim, entrances, obstacles), never an exhaustive inventory, never
 transient litter unless verbosity is "detailed", never repeat covered
-topics, and describe people only as aggregate activity.
+topics, and describe people only as aggregate activity. If targets
+include "scene changes", an escalation means the view has materially
+changed: describe the new scene; the first report (lastCallout null)
+establishes the starting scene and must never be framed as "no change".
+Exception: when
+lastCallout is null nothing has been spoken yet — give a brief first
+description of what is currently here instead of staying silent for
+lack of novelty.
 For "question" goals: the user asked a direct question about this scene
 and is waiting for an answer. Answer it in the callout text. The silence
 preference above does NOT apply; return noCallout only if the scene data
@@ -128,15 +137,36 @@ class ChatModelClient:
             raise ModelOutputError("Model reply had no message content") from exc
 
     # -- CloudModelClient ----------------------------------------------
-    _QUESTION_MARKERS = ("what's in front", "what is in front", "what do you see",
-                         "in front of the camera", "in front of me")
+    _QUESTION_MARKERS = ("what's in front", "what is in front", "what do you see", "what you see",
+                         "in front of the camera", "in front of this camera", "in front of me",
+                         "anything interesting", "anything notable",
+                         "anything to see", "anything worth seeing",
+                         "something interesting",
+                         "what's interesting here", "what is interesting here")
+    _SCENE_CHANGE_MARKERS = ("when the scene changes", "when anything changes",
+                             "when things change", "when the view changes",
+                             "as the scene changes", "as things change",
+                             "keep letting me know")
+    _CONTINUING_MARKERS = ("as i pass", "as i walk", "as i stroll", "as we go",
+                           "while i walk", "while i stroll",
+                           "keep telling", "keep describing", "keep me posted",
+                           "keep me updated", "continue telling",
+                           "continue describing", "continue to tell",
+                           "continuously")
 
     def parse_goal(self, raw_text: str) -> GoalContext:
         # Deterministic floor for the canonical question shape
         # (mirrors GoalIntent in Swift): a model that variously
         # returns "camera", "sign text", or no targets must not get
         # to veto "what is in front of this camera?"
-        if any(m in raw_text.lower() for m in self._QUESTION_MARKERS):
+        low = raw_text.lower()
+        if any(m in low for m in self._SCENE_CHANGE_MARKERS):
+            return GoalContext(rawText=raw_text.strip(), targets=["scene changes"], kind="describe")
+        if any(m in low for m in self._QUESTION_MARKERS):
+            if any(m in low for m in self._CONTINUING_MARKERS):
+                # Same scene wording, continuing intent: describe,
+                # not a one-shot question that ends after one answer.
+                return GoalContext(rawText=raw_text.strip(), targets=["scene changes"], kind="describe")
             return GoalContext(rawText=raw_text.strip(),
                                targets=["the scene in front of the camera"],
                                kind="question")

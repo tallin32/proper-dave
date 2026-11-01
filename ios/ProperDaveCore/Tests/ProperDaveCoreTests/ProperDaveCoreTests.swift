@@ -385,3 +385,182 @@ extension ProperDaveCoreTests {
         XCTAssertNil(GoalIntent.questionGoal(for: "Tell me when I reach gate B62"))
     }
 }
+
+extension ProperDaveCoreTests {
+    func testSceneInterestQuestionsPrefilter() {
+        XCTAssertEqual(GoalIntent.questionGoal(for: "Anything interesting to see here?")?.kind, .question)
+        XCTAssertEqual(GoalIntent.questionGoal(for: "What's interesting here?")?.kind, .question)
+        // Ongoing narration stays describe-shaped: the pre-filter
+        // must not grab it even though it mentions interest.
+        XCTAssertNil(GoalIntent.questionGoal(for: "Tell me anything interesting as I pass"))
+        XCTAssertNil(GoalIntent.questionGoal(for: "Keep telling me what's interesting as I walk"))
+    }
+
+    func testDescribeBaselinePromptDemandsFirstReport() {
+        let digest = FrameDigest(sessionID: UUID(), sequence: 1, sourceID: "mock",
+                                 labels: [ScoredLabel(name: "laptop", confidence: 0.9)])
+        let goal = GoalContext(rawText: "Anything interesting?", targets: [], kind: .describe)
+        let first = LocalModelPrompt.escalation(EscalationRequest(
+            sessionID: UUID(), goal: goal, digest: digest, lastCallout: nil))
+        XCTAssertTrue(first.contains("BASELINE"), first)
+        let later = LocalModelPrompt.escalation(EscalationRequest(
+            sessionID: UUID(), goal: goal, digest: digest, lastCallout: "A laptop."))
+        XCTAssertFalse(later.contains("BASELINE"), later)
+    }
+}
+
+extension ProperDaveCoreTests {
+    final class SilentDescribeClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "silent-describe"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "No new notable elements observed.")
+        }
+    }
+
+    final class ScriptedDescribeSource: DigestSource, @unchecked Sendable {
+        let sourceID = "scripted-describe"
+        let labels: [String]
+        init(labels: [String]) { self.labels = labels }
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: labels.map { ScoredLabel(name: $0, confidence: 0.9) },
+                            sceneChange: ChangeMetrics(pixelDiff: 0.1)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    @MainActor
+    func testDescribeBaselineSpeaksEvenForBlackVoid() async throws {
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: []),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(spoken, ["I can't make anything out from the camera right now. The view looks dark or blank."],
+                       "a describe goal must report its first scene even when that scene is a void")
+    }
+
+    @MainActor
+    func testDescribeBaselineFallbackNamesVisibleLabelsOnce() async throws {
+        let session = SessionController(log: EventLog())
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: ["laptop", "desk"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(spoken, ["laptop, desk in view."])
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testOneShotVsContinuingFrontOfCamera() {
+        XCTAssertEqual(GoalIntent.intentGoal(for: "What is currently in front of this camera?")?.kind, .question)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Continue telling me what is in front of this camera.")?.kind, .describe)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep telling me what you see")?.kind, .describe)
+        XCTAssertNil(GoalIntent.questionGoal(for: "Continue telling me what is in front of this camera."))
+    }
+
+    func testDemoParserKeepsContinuingNarrationRunning() async throws {
+        let g = try await DemoCloudClient().parseGoal("Continue telling me what is in front of this camera.")
+        XCTAssertEqual(g.kind, .describe)
+        let q = try await DemoCloudClient().parseGoal("What is currently in front of this camera?")
+        XCTAssertEqual(q.kind, .question)
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testSceneChangeNarrationIsDescribeNotWatch() {
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep letting me know when the scene changes.")?.kind, .describe)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Let me know when anything changes")?.kind, .describe)
+        // A specific arrival is still a watch for the model parser:
+        // the deterministic floor must not grab it.
+        XCTAssertNil(GoalIntent.intentGoal(for: "Let me know when the train to Grand Central arrives"))
+    }
+}
+
+extension ProperDaveCoreTests {
+    @MainActor
+    func testSceneChangeGoalStartsAsDescribeWithoutModelParse() async throws {
+        // Field log 01:58: "Keep letting me know when the scene
+        // changes." died at goal_parse_failed when the model parser
+        // returned a watch with no targets. The deterministic floor
+        // must classify it before any parser is consulted.
+        let session = SessionController(log: EventLog())
+        var errors: [String] = []
+        var spoken: [String] = []
+        session.onCriticalError = { title, _ in errors.append(title) }
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: SilentDescribeClient(), source: ScriptedDescribeSource(labels: ["laptop"]),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(session.goal?.kind, .describe)
+        XCTAssertTrue(errors.isEmpty, "errors: \(errors)")
+        XCTAssertEqual(spoken, ["laptop in view."])
+    }
+}
+
+extension ProperDaveCoreTests {
+    private func sceneGoal() -> GoalContext {
+        GoalContext(rawText: "Keep letting me know when the scene changes.",
+                    targets: ["scene changes"], kind: .describe)
+    }
+    func testSceneChangeGoalEscalatesOnGenericSceneSwap() {
+        // Field report: laptop -> window -> face produced no
+        // callout, because stroll saliency scores those topics
+        // 0.40/0.40/0.15 against a 0.60 threshold. For a
+        // scene-change goal the change itself is the relevance.
+        let window = [digest(labels: ["laptop", "desk"], pixel: 0.1)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["window", "curtain"], pixel: 0.7),
+                                         window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertTrue(d.isEscalation, "\(d)")
+        let (d2, _) = Classifier.evaluate(digest: digest(labels: ["person", "face"], pixel: 0.7),
+                                          window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertTrue(d2.isEscalation, "\(d2)")
+        // A clear swap inside the cooldown still fires: otherwise
+        // it is absorbed into the window and never reported.
+        let (d3, _) = Classifier.evaluate(digest: digest(labels: ["window", "curtain"], pixel: 0.7),
+                                          window: window, goal: sceneGoal(), secondsSinceEscalation: 2)
+        XCTAssertTrue(d3.isEscalation, "\(d3)")
+    }
+    func testSceneChangeGoalStaysSilentWhenNothingChanges() {
+        let window = [digest(labels: ["laptop"], pixel: 0.02)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["laptop"], pixel: 0.02),
+                                         window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertEqual(d, .suppress(reason: "noMaterialChange"))
+    }
+    func testStrollDescribeStillGatesGenericTopics() {
+        // The scene-change bypass must not leak into stroll goals.
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["laptop"], pixel: 0.6),
+                                         window: [digest(labels: ["desk"])], goal: dgoal(),
+                                         secondsSinceEscalation: 30)
+        XCTAssertEqual(d, .suppress(reason: "notSalient"))
+    }
+    func testSceneChangePromptFramesFirstReportAsStartingScene() {
+        let request = EscalationRequest(sessionID: UUID(), goal: sceneGoal(),
+                                        digest: digest(labels: ["laptop"]), recentDigests: [])
+        let prompt = LocalModelPrompt.escalation(request)
+        XCTAssertTrue(prompt.contains("starting scene"), prompt)
+        XCTAssertTrue(prompt.contains("never as a change"), prompt)
+    }
+}
