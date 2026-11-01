@@ -52,8 +52,24 @@ def test_escalation_callout_and_silence():
 
 
 def test_rate_limit_never_reaches_model():
+    # The server's own anti-storm backstop reports too_soon, never
+    # rate_limited: that reason is reserved for a real upstream 429
+    # (field log 05:56 conflated the two).
     c = client(min_interval_s=60)
     c.post("/v1/escalations", json=escalation(["Gate B62"]))
+    assert c.post("/v1/escalations", json=escalation(["Gate B62"])).json()["reason"] == "too_soon"
+
+
+def test_upstream_429_reports_rate_limited():
+    from proper_dave.model_backends import ModelUnavailable
+
+    class _Throttled:
+        model_name = "frontier:stub-m"
+
+        def evaluate(self, request):
+            raise ModelUnavailable("Model endpoint answered 429: slow down")
+
+    c = client(client=_Throttled())
     assert c.post("/v1/escalations", json=escalation(["Gate B62"])).json()["reason"] == "rate_limited"
 
 
@@ -61,3 +77,41 @@ def test_auth_when_key_set():
     c = client(api_key="k")
     assert c.post("/v1/goals/parse", json={"rawText": "gate B62"}).status_code == 401
     assert c.get("/v1/health").status_code == 200
+
+
+class _NamedStubModel:
+    """Minimal client double: identity is what these tests assert."""
+
+    model_name = "frontier:stub-m"
+
+    def evaluate(self, request):
+        from proper_dave.models import CalloutResult
+        return CalloutResult.callout("Gate B62 is in view.", relevance=0.9)
+
+
+def test_health_reports_configured_model():
+    r = client(client=_NamedStubModel()).get("/v1/health")
+    assert r.json() == {"status": "ok", "model": "frontier:stub-m"}
+
+
+def test_escalation_log_names_the_answering_model(tmp_path):
+    log_file = tmp_path / "server.jsonl"
+    c = client(client=_NamedStubModel(), log_path=str(log_file))
+    assert c.post("/v1/escalations", json=escalation(["Gate B62"])).json()["kind"] == "callout"
+    import json as _json
+    events = [_json.loads(line) for line in log_file.read_text().splitlines()]
+    received = [e for e in events if e["event"] == "callout_received"]
+    assert received and received[-1]["model"] == "frontier:stub-m"
+
+
+def test_main_announces_model_and_warns_on_fake(monkeypatch, capsys):
+    import uvicorn
+
+    from proper_dave.server import main
+
+    monkeypatch.setenv("PROPER_DAVE_MODEL_BACKEND", "fake")
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    main()
+    err = capsys.readouterr().err
+    assert "model = fake-cloud-model" in err
+    assert "WARNING: fake backend" in err

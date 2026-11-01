@@ -234,10 +234,10 @@ public final class SessionController: ObservableObject {
                 // information is present", 01:27). Wait for a digest
                 // carrying any label or OCR, up to 3 digests, then
                 // answer from the latest regardless.
-                let usable = !digest.labels.isEmpty || !digest.ocrText.isEmpty
+                let usable = digest.labels.contains { $0.confidence >= 0.5 } || !digest.ocrText.isEmpty
                 if !usable && received < 3 {
                     log.append(sessionID: sessionID, component: "capture", event: "question_waiting_frame",
-                               detail: "digest #\(received) has no labels or OCR yet")
+                               detail: "digest #\(received) has no confident labels or OCR yet")
                     continue
                 }
                 escalationCount += 1
@@ -276,10 +276,17 @@ public final class SessionController: ObservableObject {
                 // carrying any label or OCR, up to 3 digests; after
                 // that the scene is reported as-is — a genuine dark
                 // or blank view is itself the first description.
-                let usable = !digest.labels.isEmpty || !digest.ocrText.isEmpty
-                if !usable && received < 3 {
+                // "Usable" also means settled: the first frame after
+                // capture starts is routinely a black, still-exposing
+                // warmup frame that Vision nonetheless labels, and a
+                // frontier model judged exactly that frame "completely
+                // black" as a describe baseline (field log 05:56).
+                // Skip digest #1 outright and require a label Vision
+                // held with real confidence (or OCR) after that.
+                let usable = digest.labels.contains { $0.confidence >= 0.5 } || !digest.ocrText.isEmpty
+                if (!usable || received < 2) && received < 3 {
                     log.append(sessionID: sessionID, component: "capture", event: "describe_waiting_frame",
-                               detail: "digest #\(received) has no labels or OCR yet")
+                               detail: "digest #\(received) is not a settled, usable scene yet")
                     continue
                 }
             }
@@ -338,7 +345,7 @@ public final class SessionController: ObservableObject {
             do { result = .success(try await evaluateWithTimeout(client, request)) }
             catch { result = .failure(error) }
             log.append(sessionID: sessionID, component: "cloud", event: "model_call_finished",
-                       detail: "\(Int(Date().timeIntervalSince(callStarted) * 1000))ms")
+                       detail: "\(Int(Date().timeIntervalSince(callStarted) * 1000))ms model=\(client.modelName)")
             // A result that lands after the goal ended (the user
             // stopped while Qwen was still loading) must never be
             // spoken: the field log showed a baseline fallback
@@ -361,7 +368,16 @@ public final class SessionController: ObservableObject {
                 }
             case .success(.noCallout(let reason)):
                 log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
-                if reason == "model_unavailable" || reason == "rate_limited" {
+                if reason == "too_soon" {
+                    // Our own server's anti-storm backstop, not a
+                    // model judgement: never let it trigger the
+                    // baseline fallback (field log 05:56 chain).
+                    // Pause briefly and silently; a baseline stays owed.
+                    modelBackoffUntil = Date().addingTimeInterval(5)
+                    log.append(sessionID: sessionID, component: "cloud", event: "model_backoff",
+                               detail: "escalations paused briefly after server said too_soon")
+                    if isDescribeBaseline { describeBaselineAttempted = false }
+                } else if reason == "model_unavailable" || reason == "rate_limited" {
                     // A backend health signal, not a judgement
                     // about the scene: it must never trigger the
                     // dark/blank fallback (field log 04:29, first

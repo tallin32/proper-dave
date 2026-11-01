@@ -1,5 +1,6 @@
 """MVP server (TRD-004). Run: uv run proper-dave-server  (0.0.0.0:3283)
 Env: PROPER_DAVE_PORT, PROPER_DAVE_API_KEY, PROPER_DAVE_SERVER_LOG,
+PROPER_DAVE_MIN_INTERVAL_S (server anti-storm backstop, default 10),
 PROPER_DAVE_MODEL_BACKEND (fake|local|frontier, default fake) plus
 PROPER_DAVE_LOCAL_* / PROPER_DAVE_FRONTIER_* (see model_backends.py).
 The client never sees which back end is live (CLD-04).
@@ -93,31 +94,33 @@ def create_app(client: CloudModelClient | None = None, *, api_key: str | None = 
         session = str(body.session_id)
         now = time.monotonic()
         if now - last_seen.get(session, -1e9) < min_interval_s:
-            log({"component": "server", "event": "rate_limited", "sessionID": session})
-            return CalloutResult.no_callout("rate_limited")
+            # Our own anti-storm backstop, not a model rate limit:
+            # a distinct reason so the client pauses briefly instead
+            # of reporting the model as rate limited (field log 05:56).
+            log({"component": "server", "event": "too_soon", "sessionID": session})
+            return CalloutResult.no_callout("too_soon")
         last_seen[session] = now
         started = time.monotonic()
         try:
             result = model.evaluate(body)
         except ModelUnavailable as exc:
             # Timeout/malformed output counts as no-callout (TRD-003 §4):
-            # silence, never a crash in the watching loop.
+            # silence, never a crash in the watching loop. A genuine
+            # upstream 429 keeps its own reason so the client can tell
+            # a model rate limit from our own too_soon backstop.
             log({"component": "cloud", "event": "model_unavailable",
-                 "sessionID": session, "detail": str(exc)[:200]})
+                 "sessionID": session, "model": getattr(model, "model_name", "unknown"),
+                 "detail": str(exc)[:200]})
+            if "429" in str(exc):
+                return CalloutResult.no_callout("rate_limited")
             return CalloutResult.no_callout("model_unavailable")
         log({"component": "cloud",
              "event": "callout_received" if result.kind == "callout" else "no_callout",
-             "sessionID": session,
+             "sessionID": session, "model": getattr(model, "model_name", "unknown"),
              "latencyMs": round((time.monotonic() - started) * 1000)})
         return result
 
     return app
-
-
-def _configured_app() -> FastAPI:
-    return create_app(client=model_from_env(),
-                      api_key=os.environ.get("PROPER_DAVE_API_KEY") or None,
-                      log_path=os.environ.get("PROPER_DAVE_SERVER_LOG") or None)
 
 
 def main() -> None:
@@ -126,10 +129,25 @@ def main() -> None:
     import uvicorn
 
     try:
-        configured = _configured_app()
+        model = model_from_env()
     except ValueError as exc:
         print(f"proper-dave-server: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
+    # Say which model is live, out loud, at startup: a server left on
+    # the fake backend answers every escalation with canned label
+    # readouts, and nothing else in the system used to reveal that
+    # (field log 05:32 — a "frontier" session answered by the fake).
+    print(f"proper-dave-server: model = {getattr(model, 'model_name', 'unknown')}",
+          file=sys.stderr)
+    if isinstance(model, FakeCloudModel):
+        print("proper-dave-server: WARNING: fake backend — set "
+              "PROPER_DAVE_MODEL_BACKEND=local or frontier for a real model.",
+              file=sys.stderr)
+    configured = create_app(
+        client=model,
+        api_key=os.environ.get("PROPER_DAVE_API_KEY") or None,
+        min_interval_s=float(os.environ.get("PROPER_DAVE_MIN_INTERVAL_S") or MIN_INTERVAL_S),
+        log_path=os.environ.get("PROPER_DAVE_SERVER_LOG") or None)
     uvicorn.run(configured, host="0.0.0.0",
                 port=int(os.environ.get("PROPER_DAVE_PORT", "3283")))
 
