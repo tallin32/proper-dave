@@ -203,3 +203,35 @@ changes without new field trips. Offline tiers additionally need:
 availability-state tests, download/delete state tests with a fake pack
 store, and a no-network inference test (airplane-mode field check is
 the acceptance evidence, not a simulator claim).
+
+## 7. Parked: contributor model tier and user model override
+
+Not hackathon scope. Meta offers a contributor variant of its
+frontier model (e.g. `muse-spark-1.3-contributor`) whose requests
+may be used to improve Meta's models. A user might reasonably want
+to opt into that tier — possibly in exchange for a discounted
+product — and the architecture should not preclude it.
+
+- **CLD-13 (future)** Model choice is a server-held allowlist of
+  model IDs; a per-install user preference may select among them
+  and rides on the escalation request. The client never holds a
+  model credential for this. This is the same seam a future BYOK
+  option needs, except BYOK moves the credential, not just the ID;
+  BYOK remains parked behind accounts (see §3).
+- **CLD-14 (future)** Contributor consent is double opt-in, after
+  the precedent of Aira's "Build AI" offer (enrol in the plan, then
+  choose the data-contributing option per call): (1) an explicit
+  Settings enrolment, off by default, with the disclosure at the
+  moment of enabling — scene photos and goal text may be used to
+  train models — and (2) the tier applies only while enrolment
+  stands. Revoking takes effect on the next escalation. Because
+  this user population cannot visually audit captured frames,
+  enrolment is never bundled with first-run setup, and a
+  discounted contributor-only tier must never be the only
+  affordable option.
+- Audit support already exists: every client log line names the
+  answering model (`model=` in `model_call_finished`), and the
+  server logs its live model at startup, so which tier answered is
+  always verifiable after the fact. If accounts ever arrive,
+  enrolment becomes an account-level flag that devices inherit and
+  can locally pause (e.g. at work).
