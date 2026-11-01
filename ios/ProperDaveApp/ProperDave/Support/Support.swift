@@ -19,12 +19,27 @@ extension View {
     }
 }
 
-/// Spoken callouts (TRD-003): one at a time, system rate.
+/// Spoken callouts (TRD-003): one at a time. Voice, rate, and
+/// pitch come from the user's Speech settings (CONV-12); defaults
+/// reproduce the plain system behaviour exactly.
 final class Speaker: NSObject, ObservableObject {
     private let synthesizer = AVSpeechSynthesizer()
+    /// "" means no voice is set: the system default speaks.
+    var voiceIdentifier = ""
+    /// Percentage of the system default rate (100 = unchanged).
+    var ratePercent = 100
+    var pitch: Float = 1.0
+
     func speak(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        let scaled = AVSpeechUtteranceDefaultSpeechRate * Float(ratePercent) / 100
+        utterance.rate = min(max(scaled, AVSpeechUtteranceMinimumSpeechRate),
+                             AVSpeechUtteranceMaximumSpeechRate)
+        utterance.pitchMultiplier = min(max(pitch, 0.5), 2.0)
+        if !voiceIdentifier.isEmpty,
+           let voice = AVSpeechSynthesisVoice(identifier: voiceIdentifier) {
+            utterance.voice = voice
+        }
         synthesizer.speak(utterance)
     }
     func stop() { synthesizer.stopSpeaking(at: .immediate) }

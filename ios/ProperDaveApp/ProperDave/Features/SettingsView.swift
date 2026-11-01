@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 struct SettingsView: View {
@@ -5,6 +6,18 @@ struct SettingsView: View {
     @FocusState private var fieldFocused: Bool
     @EnvironmentObject private var modelPacks: ModelPackManager
     @State private var showDownloadConfirmation = false
+
+    private var speechVoices: [AVSpeechSynthesisVoice] {
+        let language = Locale.current.language.languageCode?.identifier ?? "en"
+        return AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix(language) }
+            .sorted { $0.name < $1.name }
+    }
+
+    private var rateBinding: Binding<Double> {
+        Binding(get: { Double(model.speechRatePercent) },
+                set: { model.speechRatePercent = Int($0) })
+    }
 
     var body: some View {
         NavigationStack {
@@ -102,6 +115,32 @@ struct SettingsView: View {
                     } footer: {
                         Text("Run it with: uv run proper-dave-server (port 3283). Plain HTTP on a home network is a courtesy lock, not security.")
                     }
+                }
+
+                Section {
+                    Picker("Voice", selection: $model.speechVoiceID) {
+                        Text("System default").tag("")
+                        ForEach(speechVoices, id: \.identifier) { voice in
+                            Text(voice.voiceTraits.contains(.isPersonalVoice)
+                                 ? "\(voice.name) (Personal Voice)" : voice.name)
+                                .tag(voice.identifier)
+                        }
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Rate: \(model.speechRatePercent)% of system")
+                        Slider(value: rateBinding, in: 50...200, step: 5)
+                            .accessibilityLabel("Speech rate")
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Pitch")
+                        Slider(value: $model.speechPitch, in: 0.5...2.0, step: 0.05)
+                            .accessibilityLabel("Speech pitch")
+                    }
+                    Button("Hear a sample") { model.speakSpeechSample() }
+                } header: {
+                    Text("Speech")
+                } footer: {
+                    Text("Dave's own voice settings, independent of VoiceOver (which keeps its own). System default voice and 100% rate reproduce the phone's standard speech. Personal Voice appears here once iOS offers it; choosing it asks your permission first.")
                 }
 
                 Section {
