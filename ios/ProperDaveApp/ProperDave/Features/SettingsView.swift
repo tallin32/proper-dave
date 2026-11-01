@@ -144,6 +144,24 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Record point-of-view footage while watching", isOn: $model.povRecordingEnabled)
+                    LabeledContent("Frames recorded", value: "\(model.povRecorder.frameCount)")
+                    Button {
+                        model.exportPOVFootage()
+                    } label: {
+                        if model.povExporting { ProgressView() } else { Text("Export footage as video") }
+                    }
+                    .disabled(model.povExporting)
+                    if let url = model.povExportURL {
+                        ShareLink(item: url) { Label("Share POV video", systemImage: "square.and.arrow.up") }
+                    }
+                } header: {
+                    Text("Demo footage")
+                } footer: {
+                    Text("Keeps every frame Dave judged from during a watch (glasses or phone camera) and exports one MP4 with frames held for their real durations — demo footage from your own point of view, no second camera needed. Off by default; frames cost storage while it is on. There is no audio track: pair it with a screen recording, which carries Dave's voice.")
+                }
+
+                Section {
                     Toggle("Working heartbeat sound", isOn: $model.heartbeatEnabled)
                     if model.heartbeatEnabled {
                         VStack(alignment: .leading) {
