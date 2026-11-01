@@ -103,7 +103,13 @@ struct FoundationLocalClient: CloudModelClient {
     /// error must not be a dead goal.
     private func withRetry<T>(_ operation: () async throws -> T) async throws -> T {
         do { return try await operation() }
-        catch { return try await operation() }
+        catch {
+            // An immediate retry is the worst response to a rate
+            // limit (observed in the field after an escalation
+            // storm); surface it and let the session back off.
+            if error.localizedDescription.lowercased().contains("rate limit") { throw error }
+            return try await operation()
+        }
     }
 
     func parseGoal(_ rawText: String) async throws -> GoalContext {

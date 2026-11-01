@@ -163,6 +163,14 @@ def _run(digest, window, goal, last_callout, since, reported, announced, cooldow
                 return Decision("suppress", "cooldown", **kw)
             if change < CHANGE_THRESHOLD:
                 return Decision("suppress", "noMaterialChange", **kw)
+            if window:
+                # Stability (mirrors Classifier.swift): a new scene
+                # must survive one digest before it is announced.
+                prev = _texts(window[-1])
+                union = now | prev
+                churn = len(now ^ prev) / len(union) if union else 0.0
+                if churn > 0.5:
+                    return Decision("suppress", "sceneUnstable", **kw)
             kw = dict(change=change, relevance=change, saliency=sal, topics=topics)
             kind = "escalateFrame" if not topics and change >= MAJOR_CHANGE else "escalateDigest"
             return Decision(kind, confidence=change, **kw)

@@ -28,9 +28,14 @@ final class MotionProbe {
                  "authorization=\(Self.authorizationName(CMMotionActivityManager.authorizationStatus()))")
         manager.startActivityUpdates(to: .main) { [weak self] activity in
             guard let self, let activity else { return }
+            // Dedupe on the activity *kind*, not the full detail:
+            // stationary(low) <-> unknown(high) flapping (observed
+            // in the field while holding the phone up) otherwise
+            // floods the log without saying anything new.
             let detail = Self.describe(activity)
-            guard detail != lastDetail else { return }
-            lastDetail = detail
+            let kind = detail.components(separatedBy: " confidence=").first ?? detail
+            guard kind != lastDetail else { return }
+            lastDetail = kind
             onEvent?("motion_activity", detail)
         }
     }

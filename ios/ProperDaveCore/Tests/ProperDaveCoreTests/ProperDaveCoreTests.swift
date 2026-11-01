@@ -530,18 +530,38 @@ extension ProperDaveCoreTests {
         // callout, because stroll saliency scores those topics
         // 0.40/0.40/0.15 against a 0.60 threshold. For a
         // scene-change goal the change itself is the relevance.
-        let window = [digest(labels: ["laptop", "desk"], pixel: 0.1)]
+        // The window holds one digest of the new scene already:
+        // a scene must survive one digest to be announced.
+        let window = [digest(labels: ["laptop", "desk"], pixel: 0.1),
+                      digest(labels: ["window", "curtain"], pixel: 0.7)]
         let (d, _) = Classifier.evaluate(digest: digest(labels: ["window", "curtain"], pixel: 0.7),
                                          window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
         XCTAssertTrue(d.isEscalation, "\(d)")
+        let faceWindow = [digest(labels: ["laptop", "desk"], pixel: 0.1),
+                          digest(labels: ["person", "face"], pixel: 0.7)]
         let (d2, _) = Classifier.evaluate(digest: digest(labels: ["person", "face"], pixel: 0.7),
-                                          window: window, goal: sceneGoal(), secondsSinceEscalation: 30)
+                                          window: faceWindow, goal: sceneGoal(), secondsSinceEscalation: 30)
         XCTAssertTrue(d2.isEscalation, "\(d2)")
         // A clear swap inside the cooldown still fires: otherwise
         // it is absorbed into the window and never reported.
         let (d3, _) = Classifier.evaluate(digest: digest(labels: ["window", "curtain"], pixel: 0.7),
                                           window: window, goal: sceneGoal(), secondsSinceEscalation: 2)
         XCTAssertTrue(d3.isEscalation, "\(d3)")
+    }
+    func testSceneChangeMidSwingIsUnstable() {
+        // First digest of a brand-new scene, mid-swing: not yet.
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["window", "curtain"], pixel: 0.7),
+                                         window: [digest(labels: ["laptop", "desk"], pixel: 0.1)],
+                                         goal: sceneGoal(), secondsSinceEscalation: 30)
+        XCTAssertEqual(d, .suppress(reason: "sceneUnstable"))
+    }
+    func testDuplicateCalloutDetection() {
+        XCTAssertTrue(SessionController.isDuplicateCallout(
+            "A cluttered area with various objects and a blurred background.",
+            of: "The scene is a cluttered area with various objects and a blurred background."))
+        XCTAssertFalse(SessionController.isDuplicateCallout(
+            "A kitchen with a stove and a sink.",
+            of: "A cluttered area with various objects."))
     }
     func testSceneChangeGoalStaysSilentWhenNothingChanges() {
         let window = [digest(labels: ["laptop"], pixel: 0.02)]
@@ -562,5 +582,59 @@ extension ProperDaveCoreTests {
         let prompt = LocalModelPrompt.escalation(request)
         XCTAssertTrue(prompt.contains("starting scene"), prompt)
         XCTAssertTrue(prompt.contains("never as a change"), prompt)
+    }
+}
+
+extension ProperDaveCoreTests {
+    final class RepetitiveClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "repetitive"
+        private(set) var evaluations = 0
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            evaluations += 1
+            return .callout(text: "A cluttered area with various objects.", relevance: 0.9)
+        }
+    }
+
+    final class AlternatingSceneSource: DigestSource, @unchecked Sendable {
+        let sourceID = "alternating"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    let scenes = [["laptop"], ["laptop"], ["window"], ["window"],
+                                  ["person"], ["person"], ["laptop"], ["laptop"]]
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        let labels = scenes[(sequence - 1) % scenes.count]
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: labels.map { ScoredLabel(name: $0, confidence: 0.9) },
+                            sceneChange: ChangeMetrics(pixelDiff: 0.7)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    @MainActor
+    func testSceneChangeSessionNeverRepeatsSameCallout() async throws {
+        // Field log 02:29: the same sentence spoken four times in
+        // six seconds. Escalations may repeat; speech must not.
+        let session = SessionController(log: EventLog())
+        let client = RepetitiveClient()
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Keep letting me know when the scene changes.",
+                      client: client, source: AlternatingSceneSource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(1.2))
+        session.stop()
+        XCTAssertGreaterThanOrEqual(client.evaluations, 2, "evaluations: \(client.evaluations)")
+        XCTAssertEqual(spoken, ["A cluttered area with various objects."], "spoken: \(spoken)")
     }
 }

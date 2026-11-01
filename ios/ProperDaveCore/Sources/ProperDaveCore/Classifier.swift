@@ -135,6 +135,20 @@ public enum Classifier {
                     return (.suppress(reason: "cooldown"), scores)
                 }
                 if change < changeThreshold { return (.suppress(reason: "noMaterialChange"), scores) }
+                // Stability: while the camera is swinging between
+                // scenes every digest differs from the last, and
+                // escalating mid-swing produced an escalation storm
+                // in the field (25 calls in a minute, then model
+                // rate-limiting). A new scene must survive one
+                // digest — still present in the next frame — before
+                // it is announced.
+                if let previous = window.last {
+                    let prev = texts(previous)
+                    let union = current.union(prev)
+                    let churn = union.isEmpty ? 0
+                        : Double(current.symmetricDifference(prev).count) / Double(union.count)
+                    if churn > 0.5 { return (.suppress(reason: "sceneUnstable"), scores) }
+                }
                 let changeScores = Scores(change: change, relevance: change, landmark: landmark, topics: topics)
                 if topics.isEmpty && change >= majorChangeThreshold {
                     return (.escalateFrame(confidence: change, landmark: landmark), changeScores)
