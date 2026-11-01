@@ -89,6 +89,28 @@ final class AppModel: ObservableObject {
     func speakSpeechSample() {
         speaker.speak("This is how Dave sounds. The train to Grand Central is arriving.")
     }
+
+    /// Point-of-view demo footage (developer feature): record the
+    /// frames Dave judged from, export one real-time MP4.
+    let povRecorder = POVRecorder()
+    @Published var povRecordingEnabled: Bool {
+        didSet { save(povRecordingEnabled, "povRecordingEnabled") }
+    }
+    @Published var povExportURL: URL?
+    @Published var povExporting = false
+
+    func exportPOVFootage() {
+        guard !povExporting else { return }
+        povExporting = true
+        Task { [weak self] in
+            let url = await self?.povRecorder.exportMP4()
+            self?.povExportURL = url
+            self?.povExporting = false
+            if url == nil {
+                self?.speaker.speak("There is no footage to export yet.")
+            }
+        }
+    }
     let modelPacks = ModelPackManager()
     @Published var sourceKind: FrameSourceKind {
         didSet {
@@ -185,6 +207,7 @@ final class AppModel: ObservableObject {
         speechVoiceID = d.string(forKey: "speechVoiceID") ?? ""
         speechRatePercent = d.integer(forKey: "speechRatePercent") == 0 ? 100 : d.integer(forKey: "speechRatePercent")
         speechPitch = d.double(forKey: "speechPitch") == 0 ? 1.0 : d.double(forKey: "speechPitch")
+        povRecordingEnabled = d.bool(forKey: "povRecordingEnabled")
         sourceKind = FrameSourceKind(rawValue: d.string(forKey: "sourceKind") ?? "") ?? .mock
         serverHost = d.string(forKey: "serverHost") ?? ""
         serverPort = d.integer(forKey: "serverPort") == 0 ? 3283 : d.integer(forKey: "serverPort")
@@ -212,6 +235,10 @@ final class AppModel: ObservableObject {
         #endif
         session.onCallout = { [weak self] text in self?.speaker.speak(text) }
         session.onNotice = { [weak self] text in self?.speaker.speak(text) }
+        session.onFrame = { [weak self] digest, data in
+            guard let self, self.povRecordingEnabled, let data else { return }
+            self.povRecorder.record(jpeg: data, at: digest.capturedAt)
+        }
         session.onConnectivityLost = { [weak self] in self?.handleConnectivityLoss() }
         session.onConnectivityRestored = { [weak self] in self?.handleConnectivityRestored() }
         session.onCriticalError = { [weak self] title, description in
@@ -329,6 +356,7 @@ final class AppModel: ObservableObject {
     func startWatching() {
         let text = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if povRecordingEnabled { povRecorder.begin() }
         if backend == .offline {
             log.append(component: "session", event: "offline_mode_started",
                        detail: "\(offlineTier.rawValue): \(offlineStatusText)")
@@ -342,6 +370,7 @@ final class AppModel: ObservableObject {
     func stopWatching() {
         serverProbeTask?.cancel(); serverProbeTask = nil
         connectivityFallbackActive = false
+        povRecorder.finish()
         session.stop()
         speaker.speak("Stopped.")
     }

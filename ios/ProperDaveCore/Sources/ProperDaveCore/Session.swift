@@ -90,6 +90,10 @@ public final class SessionController: ObservableObject {
     /// in fallback evaluator does not close the episode.
     public var onConnectivityLost: (() -> Void)?
     public var onConnectivityRestored: (() -> Void)?
+    /// Per-digest frame tap (demo footage): the app may record the
+    /// actual frames Dave judged from. Data is nil for sources that
+    /// retain no image. Off unless the app installs a handler.
+    public var onFrame: ((FrameDigest, Data?) -> Void)?
     private var evaluatorGeneration = 0
     /// Called when a stream belonging to the *active* source ends while
     /// watching. The app may return a fallback source (e.g. phone camera)
@@ -297,6 +301,7 @@ public final class SessionController: ObservableObject {
             // its frames even though the session itself is still watching.
             if Task.isCancelled { break }
             received += 1
+            onFrame?(digest, source.imageData(for: digest))
             if evaluatorGeneration != seenEvaluatorGeneration {
                 seenEvaluatorGeneration = evaluatorGeneration
                 modelBackoffUntil = nil

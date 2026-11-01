@@ -1074,6 +1074,20 @@ extension ProperDaveCoreTests {
     }
 
     @MainActor
+    func testFrameTapDeliversDigestImages() async throws {
+        let session = SessionController(log: EventLog())
+        var tapped: [Data?] = []
+        session.onFrame = { _, data in tapped.append(data) }
+        session.start(goalText: "Tell me what's in front of the camera",
+                      client: AnswerClient(), source: ImageSpySource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.6))
+        session.stop()
+        XCTAssertEqual(tapped.count, 1)
+        XCTAssertEqual(tapped.first ?? nil, Data("jpeg".utf8))
+    }
+
+    @MainActor
     func testReplaceEvaluatorSwapsJudgingAndClearsBackoff() async throws {
         let log = EventLog()
         let session = SessionController(log: log)
