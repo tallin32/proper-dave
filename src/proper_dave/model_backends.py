@@ -128,7 +128,18 @@ class ChatModelClient:
             raise ModelOutputError("Model reply had no message content") from exc
 
     # -- CloudModelClient ----------------------------------------------
+    _QUESTION_MARKERS = ("what's in front", "what is in front", "what do you see",
+                         "in front of the camera", "in front of me")
+
     def parse_goal(self, raw_text: str) -> GoalContext:
+        # Deterministic floor for the canonical question shape
+        # (mirrors GoalIntent in Swift): a model that variously
+        # returns "camera", "sign text", or no targets must not get
+        # to veto "what is in front of this camera?"
+        if any(m in raw_text.lower() for m in self._QUESTION_MARKERS):
+            return GoalContext(rawText=raw_text.strip(),
+                               targets=["the scene in front of the camera"],
+                               kind="question")
         reply = self._chat(self._parse_model, [
             {"role": "system", "content": PARSE_SYSTEM},
             {"role": "user", "content": raw_text}])

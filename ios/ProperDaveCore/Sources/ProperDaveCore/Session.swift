@@ -122,7 +122,12 @@ public final class SessionController: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             let parsed: GoalContext
-            do { parsed = try await parser.parseGoal(goalText) }
+            if let question = GoalIntent.questionGoal(for: goalText) {
+                log.append(sessionID: sessionID, component: "session", event: "goal_intent_prefilter",
+                           detail: "question")
+                parsed = question
+            } else {
+                do { parsed = try await parser.parseGoal(goalText) }
             catch {
                 // Log the actual error, not just the modal title:
                 // a field report that says only "Could not start
@@ -132,6 +137,7 @@ public final class SessionController: ObservableObject {
                 state = .failed(error.localizedDescription)
                 onCriticalError?("Could not start watching", "The goal could not be understood: \(error.localizedDescription)")
                 return
+                }
             }
             guard parsed.kind != .watch || !parsed.targets.isEmpty else {
                 state = .failed("No targets in that goal.")
