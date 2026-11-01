@@ -198,6 +198,28 @@ private struct TokenizerBridge: MLXLMCommon.Tokenizer {
 }
 
 @available(iOS 27.0, *)
+private final class QwenModelCache {
+    // One MLXLanguageModel per pack directory for the app's life:
+    // building a fresh model object per request made the first
+    // field evaluate exceed 32s (container load per call).
+    static var cachedDirectory: URL?
+    static var cachedModel: MLXLanguageModel?
+    static func model(directory: URL) -> MLXLanguageModel {
+        if cachedDirectory == directory, let cachedModel { return cachedModel }
+        let model = MLXLanguageModel(
+            configuration: ModelConfiguration(directory: directory),
+            capabilities: [.guidedGeneration, .vision],
+            weightsLocation: { _ in directory },
+            load: { _, _ in
+                try await loadModelContainer(from: directory, using: TransformersTokenizerLoader())
+            })
+        cachedDirectory = directory
+        cachedModel = model
+        return model
+    }
+}
+
+@available(iOS 27.0, *)
 struct MLXDownloadableLocalClient: CloudModelClient {
     let packManager: ModelPackManager
     var modelName: String { "offline:qwen3-vl-2b-mlx" }
@@ -208,13 +230,7 @@ struct MLXDownloadableLocalClient: CloudModelClient {
                 "The downloadable offline model is not downloaded yet. Download it in Settings first.")
         }
         let directory = packManager.directory
-        let model = MLXLanguageModel(
-            configuration: ModelConfiguration(directory: directory),
-            capabilities: [.guidedGeneration, .vision],
-            weightsLocation: { _ in directory },
-            load: { _, _ in
-                try await loadModelContainer(from: directory, using: TransformersTokenizerLoader())
-            })
+        let model = QwenModelCache.model(directory: directory)
         return FoundationLocalClient(modelName: modelName) {
             LanguageModelSession(model: model,
                                  instructions: "You parse and judge goals for a blind user. Prefer silence over low-value speech, except when answering a direct question or giving a describe goal's first report.")
