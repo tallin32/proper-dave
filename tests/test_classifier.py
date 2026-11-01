@@ -160,3 +160,15 @@ def test_scene_change_stable_across_label_flicker():
     d = evaluate(digest(labels=["stove", "counter", "cabinet"], pixel=0.7),
                  window, goal, since_escalation=30)
     assert d.kind in ("escalateDigest", "escalateFrame")
+
+
+def test_scene_change_in_motion_announces_snapshot_after_interval():
+    goal = GoalContext(rawText="Keep letting me know when the scene changes.",
+                       targets=["scene changes"], kind="describe")
+    window = [digest(labels=["laptop", "desk"], pixel=0.1),
+              digest(labels=["window", "curtain"], pixel=0.8)]
+    current = digest(labels=["stove", "sink"], pixel=0.95)
+    held = evaluate(current, window, goal, since_escalation=5)
+    assert (held.kind, held.reason) == ("suppress", "sceneUnstable")
+    moving = evaluate(current, window, goal, since_escalation=16)
+    assert moving.kind == "escalateFrame"

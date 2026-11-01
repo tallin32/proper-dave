@@ -92,7 +92,8 @@ class FakeCloudModel:
             return GoalContext(rawText=text, targets=["scene changes"], kind="describe")
         if any(m in low for m in self._QUESTION_MARKERS):
             if any(m in low for m in self._CONTINUING_MARKERS):
-                return GoalContext(rawText=text, targets=["scene changes"], kind="describe")
+                return GoalContext(rawText=text, targets=[], kind="describe",
+                                   verbosity="detailed")
             # One-shot question about the current scene: answer from
             # the first frame, do not set up a watch (TRD-000 §6).
             return GoalContext(rawText=text, targets=["the scene in front of the camera"],

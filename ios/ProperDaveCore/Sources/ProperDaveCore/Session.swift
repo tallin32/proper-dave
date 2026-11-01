@@ -166,7 +166,7 @@ public final class SessionController: ObservableObject {
             // cooldown rather than the stroll floor.
             if parsed.kind == .describe && !parsed.isSceneChangeGoal { self.cooldown = max(self.cooldown, 20) }
             log.append(sessionID: sessionID, component: "session", event: "goal_started",
-                       detail: "kind=\(parsed.kind.rawValue) targets=\(parsed.targets.joined(separator: ","))")
+                       detail: "kind=\(parsed.kind.rawValue) verbosity=\(parsed.verbosity.rawValue) targets=\(parsed.targets.joined(separator: ","))")
             await consume(source: source, goal: parsed, client: evaluator)
         }
     }
@@ -372,12 +372,31 @@ public final class SessionController: ObservableObject {
                     // Our own server's anti-storm backstop, not a
                     // model judgement: never let it trigger the
                     // baseline fallback (field log 05:56 chain).
-                    // Pause briefly; a baseline stays owed.
+                    // Pause briefly and silently; a baseline stays owed.
                     modelBackoffUntil = Date().addingTimeInterval(5)
                     log.append(sessionID: sessionID, component: "cloud", event: "model_backoff",
                                detail: "escalations paused briefly after server said too_soon")
                     if isDescribeBaseline { describeBaselineAttempted = false }
-                } else if isDescribeBaseline { speakDescribeBaselineFallback() }
+                } else if reason == "model_unavailable" || reason == "rate_limited" {
+                    // A backend health signal, not a judgement
+                    // about the scene: it must never trigger the
+                    // dark/blank fallback (field log 04:29, first
+                    // server session — every escalation returned
+                    // one of these and the baseline announced a
+                    // void). Back off, keep the baseline owed, and
+                    // say what actually happened, once.
+                    modelBackoffUntil = Date().addingTimeInterval(reason == "rate_limited" ? 10 : 30)
+                    log.append(sessionID: sessionID, component: "cloud", event: "model_backoff",
+                               detail: "escalations paused after server said \(reason)")
+                    if isDescribeBaseline {
+                        describeBaselineAttempted = false
+                        onNotice?(reason == "rate_limited"
+                            ? "The model is rate limited right now. I'll keep watching and try again shortly."
+                            : "The model isn't responding right now. I'll keep watching and try again shortly.")
+                    }
+                } else if isDescribeBaseline {
+                    speakDescribeBaselineFallback()
+                }
             case .failure(let error):
                 log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
                 let lowered = error.localizedDescription.lowercased()
@@ -386,7 +405,18 @@ public final class SessionController: ObservableObject {
                     log.append(sessionID: sessionID, component: "cloud", event: "model_backoff",
                                detail: "escalations paused 30s after: \(error.localizedDescription)")
                 }
-                if isDescribeBaseline { speakDescribeBaselineFallback() }
+                if lowered.contains("rate limit") && isDescribeBaseline {
+                    // A rate limit says nothing about the scene;
+                    // it must not trigger the dark/blank fallback
+                    // (field log 03:45, where a new goal opened
+                    // during a system-model limit and announced a
+                    // void). Say what actually happened, keep the
+                    // baseline owed, and retry after the backoff.
+                    describeBaselineAttempted = false
+                    onNotice?("The model is rate limited right now. I'll keep watching and try again shortly.")
+                } else if isDescribeBaseline {
+                    speakDescribeBaselineFallback()
+                }
             }
         }
         guard state == .watching, !Task.isCancelled else { return }
