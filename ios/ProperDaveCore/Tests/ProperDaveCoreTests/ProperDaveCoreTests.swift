@@ -333,3 +333,47 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(d2.isEscalation)
     }
 }
+
+extension ProperDaveCoreTests {
+    final class WarmupSource: DigestSource, @unchecked Sendable {
+        let sourceID = "warmup"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                // First digest: camera still exposing — nothing in it.
+                continuation.yield(FrameDigest(sessionID: sessionID, sequence: 1, sourceID: sourceID,
+                                               sceneChange: ChangeMetrics(pixelDiff: 0.1)))
+                continuation.yield(FrameDigest(sessionID: sessionID, sequence: 2, sourceID: sourceID,
+                                               ocrText: [OCRSpan(text: "Gate B62")],
+                                               sceneChange: ChangeMetrics(pixelDiff: 0.6)))
+                continuation.finish()
+            }
+        }
+        func stop() {}
+    }
+
+    final class CountingAnswerClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "counting"
+        private(set) var evaluations = 0
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["the scene in front of the camera"], kind: .question)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            evaluations += 1
+            return .callout(text: "Gate B62 ahead.", relevance: 1)
+        }
+    }
+
+    @MainActor
+    func testQuestionWaitsForUsableFrame() async throws {
+        let session = SessionController(log: EventLog())
+        let client = CountingAnswerClient()
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "What is in front of this camera?",
+                      client: client, source: WarmupSource(), interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.6))
+        XCTAssertEqual(client.evaluations, 1, "must not evaluate the empty warmup digest")
+        XCTAssertEqual(spoken, ["Gate B62 ahead."])
+        XCTAssertEqual(session.state, .ended)
+    }
+}
