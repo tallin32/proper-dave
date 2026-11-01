@@ -57,6 +57,15 @@ public final class MockDigestSource: DigestSource, @unchecked Sendable {
     public func stop() { task?.cancel() }
 }
 
+public enum EvaluatorError: LocalizedError {
+    case timedOut(seconds: Int)
+    public var errorDescription: String? {
+        switch self {
+        case .timedOut(let seconds): return "The model did not answer within \(seconds) seconds."
+        }
+    }
+}
+
 @MainActor
 public final class SessionController: ObservableObject {
     public enum State: Equatable { case idle, starting, watching, pausedForDebug, ended, failed(String) }
@@ -89,6 +98,11 @@ public final class SessionController: ObservableObject {
     /// the best local understander parses even when escalation
     /// judgement routes elsewhere by policy (TRD-003 §2).
     private var parser: (any CloudModelClient)?
+    /// Hard cap on one evaluator call. A first Qwen load on device
+    /// exceeded 32s in the field with the consume loop blocked
+    /// behind it; beyond this the session treats the model as
+    /// unavailable instead of freezing.
+    public var evaluatorTimeoutSeconds: TimeInterval = 45
     private var interval: TimeInterval = 2
     private var cooldown: TimeInterval = Classifier.defaultCooldown
     private var lastEscalationAt: Date?
@@ -204,6 +218,7 @@ public final class SessionController: ObservableObject {
         log.append(sessionID: sessionID, component: "capture", event: "capture_started", detail: source.sourceID)
         var received = 0
         var describeBaselineAttempted = false
+        var modelBackoffUntil: Date?
         for await digest in source.stream(sessionID: sessionID, interval: interval) {
             // A cancelled task belongs to a superseded source: stop eating
             // its frames even though the session itself is still watching.
@@ -231,18 +246,20 @@ public final class SessionController: ObservableObject {
                                                 recentDigests: [], image: image, lastCallout: nil)
                 log.append(sessionID: sessionID, component: "cloud", event: "question_sent", detail: goal.rawText)
                 do {
-                    switch try await client.evaluate(request) {
+                    switch try await evaluateWithTimeout(client, request) {
                     case .callout(let text, _):
-                        lastCallout = text
-                        log.append(sessionID: sessionID, component: "speech", event: "callout_spoken", detail: text)
-                        onCallout?(text)
+                        if !Task.isCancelled {
+                            lastCallout = text
+                            log.append(sessionID: sessionID, component: "speech", event: "callout_spoken", detail: text)
+                            onCallout?(text)
+                        }
                     case .noCallout(let reason):
                         log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
-                        onNotice?("I couldn't tell what's there from this view.")
+                        if !Task.isCancelled { onNotice?("I couldn't tell what's there from this view.") }
                     }
                 } catch {
                     log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
-                    onNotice?("I couldn't answer that just now.")
+                    if !Task.isCancelled { onNotice?("I couldn't answer that just now.") }
                 }
                 log.append(sessionID: sessionID, component: "session", event: "question_answered", detail: "")
                 state = .ended
@@ -275,6 +292,14 @@ public final class SessionController: ObservableObject {
             window.append(digest)
             if window.count > 5 { window.removeFirst() }
             guard decision.isEscalation else { continue }
+            if let modelBackoffUntil, Date() < modelBackoffUntil {
+                // The model told us to slow down (rate limited in
+                // the field after an escalation storm); hammering
+                // it every digest only extends the penalty.
+                log.append(sessionID: sessionID, component: "cloud", event: "escalation_suppressed_backoff",
+                           detail: "model backoff until \(modelBackoffUntil)")
+                continue
+            }
             if let landmark = scores.landmark { reportedLandmarks.insert(landmark) }
             if goal.kind == .describe { announcedTopics.formUnion(scores.topics) }
             lastEscalationAt = Date()
@@ -292,7 +317,12 @@ public final class SessionController: ObservableObject {
             let isDescribeBaseline = goal.kind == .describe && !describeBaselineAttempted && lastCallout == nil
             describeBaselineAttempted = true
             func speakDescribeBaselineFallback() {
-                let visible = digest.labels.map(\.name) + digest.ocrText.map(\.text)
+                // Only labels Vision held with real confidence may
+                // be named; its low-confidence guesses on a dark
+                // bathroom produced a phantom "night sky" in the
+                // field. Below the bar, the honest report is the
+                // dark/blank one.
+                let visible = digest.labels.filter { $0.confidence >= 0.5 }.map(\.name) + digest.ocrText.map(\.text)
                 let text = visible.isEmpty
                     ? "I can't make anything out from the camera right now. The view looks dark or blank."
                     : visible.prefix(3).joined(separator: ", ") + " in view."
@@ -300,18 +330,40 @@ public final class SessionController: ObservableObject {
                 log.append(sessionID: sessionID, component: "speech", event: "describe_baseline_fallback", detail: text)
                 onCallout?(text)
             }
-            do {
-                switch try await client.evaluate(request) {
-                case .callout(let text, _):
+            let callStarted = Date()
+            let result: Result<CalloutResult, Error>
+            do { result = .success(try await evaluateWithTimeout(client, request)) }
+            catch { result = .failure(error) }
+            log.append(sessionID: sessionID, component: "cloud", event: "model_call_finished",
+                       detail: "\(Int(Date().timeIntervalSince(callStarted) * 1000))ms")
+            // A result that lands after the goal ended (the user
+            // stopped while Qwen was still loading) must never be
+            // spoken: the field log showed a baseline fallback
+            // firing after goal_ended.
+            if Task.isCancelled { break }
+            switch result {
+            case .success(.callout(let text, _)):
+                if let lastCallout, Self.isDuplicateCallout(text, of: lastCallout) {
+                    // Never say the same thing twice in a row:
+                    // a model that describes every room as "a
+                    // cluttered area" must not become a loop.
+                    log.append(sessionID: sessionID, component: "speech", event: "callout_suppressed_duplicate", detail: text)
+                } else {
                     lastCallout = text
                     log.append(sessionID: sessionID, component: "speech", event: "callout_spoken", detail: text)
                     onCallout?(text)
-                case .noCallout(let reason):
-                    log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
-                    if isDescribeBaseline { speakDescribeBaselineFallback() }
                 }
-            } catch {
+            case .success(.noCallout(let reason)):
+                log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
+                if isDescribeBaseline { speakDescribeBaselineFallback() }
+            case .failure(let error):
                 log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
+                let lowered = error.localizedDescription.lowercased()
+                if lowered.contains("rate limit") || lowered.contains("did not answer within") {
+                    modelBackoffUntil = Date().addingTimeInterval(30)
+                    log.append(sessionID: sessionID, component: "cloud", event: "model_backoff",
+                               detail: "escalations paused 30s after: \(error.localizedDescription)")
+                }
                 if isDescribeBaseline { speakDescribeBaselineFallback() }
             }
         }
@@ -348,6 +400,36 @@ public final class SessionController: ObservableObject {
         state = .watching
         log.append(sessionID: sessionID, component: "capture", event: "capture_resumed_debug")
     }
+    /// Near-duplicate speech check: same words, or one text's
+    /// words almost wholly contained in the other's ("The scene
+    /// is a cluttered area…" vs "A cluttered area…").
+    nonisolated static func isDuplicateCallout(_ text: String, of previous: String) -> Bool {
+        func words(_ s: String) -> Set<String> {
+            Set(s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        }
+        let a = words(text), b = words(previous)
+        guard !a.isEmpty, !b.isEmpty else { return false }
+        let overlap = Double(a.intersection(b).count) / Double(min(a.count, b.count))
+        return overlap >= 0.8
+    }
+
+    private func evaluateWithTimeout(_ client: any CloudModelClient,
+                                     _ request: EscalationRequest) async throws -> CalloutResult {
+        let seconds = evaluatorTimeoutSeconds
+        return try await withThrowingTaskGroup(of: CalloutResult.self) { group in
+            group.addTask { try await client.evaluate(request) }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw EvaluatorError.timedOut(seconds: Int(seconds))
+            }
+            guard let result = try await group.next() else {
+                throw EvaluatorError.timedOut(seconds: Int(seconds))
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
     public func stop(confirm: Bool = true) {
         task?.cancel(); task = nil
         currentSource?.stop(); currentSource = nil

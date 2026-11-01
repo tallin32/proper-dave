@@ -136,12 +136,17 @@ def test_watch_first_digest_always_escalates_baseline():
 def test_scene_change_goal_escalates_on_generic_swap():
     goal = GoalContext(rawText="Keep letting me know when the scene changes.",
                        targets=["scene changes"], kind="describe")
+    held = [digest(labels=["laptop", "desk"], pixel=0.1),
+            digest(labels=["window", "curtain"], pixel=0.7)]
     d = evaluate(digest(labels=["window", "curtain"], pixel=0.7),
-                 [digest(labels=["laptop", "desk"], pixel=0.1)], goal, since_escalation=30)
+                 held, goal, since_escalation=30)
     assert d.kind in ("escalateDigest", "escalateFrame")
     d2 = evaluate(digest(labels=["laptop"], pixel=0.02),
                   [digest(labels=["laptop"], pixel=0.02)], goal, since_escalation=30)
     assert (d2.kind, d2.reason) == ("suppress", "noMaterialChange")
     d3 = evaluate(digest(labels=["window", "curtain"], pixel=0.7),
-                  [digest(labels=["laptop", "desk"], pixel=0.1)], goal, since_escalation=2)
+                  held, goal, since_escalation=2)
     assert d3.kind in ("escalateDigest", "escalateFrame")
+    d4 = evaluate(digest(labels=["window", "curtain"], pixel=0.7),
+                  [digest(labels=["laptop", "desk"], pixel=0.1)], goal, since_escalation=30)
+    assert (d4.kind, d4.reason) == ("suppress", "sceneUnstable")
