@@ -105,6 +105,32 @@ def test_describe_landmarks_verbosity_is_stricter():
     assert (d.kind, d.reason) == ("suppress", "notSalient")
 
 
+def test_describe_new_ocr_bypasses_cooldown():
+    # Field log 14:00 (mirrors Swift): sign-bearing digests were
+    # trapped by the cooldown while walking.
+    d = evaluate(digest(labels=["corridor"], ocr=["NO SMOKING"]),
+                 [digest(labels=["corridor"])],
+                 dgoal(verbosity="detailed"), since_escalation=2)
+    assert d.kind.startswith("escalate"), d
+    plain = evaluate(digest(labels=["corridor"]),
+                     [digest(labels=["corridor"])],
+                     dgoal(verbosity="detailed"), since_escalation=2)
+    assert (plain.kind, plain.reason) == ("suppress", "cooldown")
+
+
+def test_describe_pictogram_sign_bypasses_cooldown():
+    # Mirrors Swift: a pictogram sign has no OCR text, but the
+    # "sign" label is in the same saliency class and fast-lanes.
+    d = evaluate(digest(labels=["corridor", "sign"]),
+                 [digest(labels=["corridor"])],
+                 dgoal(verbosity="detailed"), since_escalation=2)
+    assert d.kind.startswith("escalate"), d
+    plain = evaluate(digest(labels=["corridor", "chair"]),
+                     [digest(labels=["corridor"])],
+                     dgoal(verbosity="detailed"), since_escalation=2)
+    assert (plain.kind, plain.reason) == ("suppress", "cooldown")
+
+
 def test_describe_brightness_swing_bypasses_cooldown():
     # Field log 00:25: a "how well lit" goal's dimming events
     # (change 0.62-0.75) died under the cooldown. Lights going off

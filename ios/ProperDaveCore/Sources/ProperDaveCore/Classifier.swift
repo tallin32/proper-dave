@@ -200,13 +200,30 @@ public enum Classifier {
                                  relevance: max(sal, 0.6), landmark: landmark, topics: topics)
                 return (.escalateFrame(confidence: max(sal, 0.6), landmark: landmark), lit)
             }
-            if let since = secondsSinceEscalation, since < cooldown, change < majorChangeThreshold {
+            // Sign-borne content bypasses the cooldown: a sign
+            // entering the frame is the highest-value announcement
+            // class, and field log 14:00 showed sign-bearing digests
+            // trapped at relevance 0.80-0.90. The class is defined
+            // by saliency, not modality — OCR text (0.80), sign and
+            // storefront labels (0.75), the entrance/exit class
+            // (0.90) — because not every sign is text: a wheelchair
+            // or no-smoking pictogram carries no OCR, but Vision's
+            // "sign" label lands in the same class. Saliency still
+            // gates below, so this cannot storm the model.
+            let ocrTexts = Set(digest.ocrText.map { $0.text.lowercased() })
+            let gainedSignage = gained.contains {
+                ocrTexts.contains($0)
+                    || itemScore($0, isOCR: false, focus: goal.targets, exclusions: goal.exclusions) >= 0.75
+            }
+            if let since = secondsSinceEscalation, since < cooldown, change < majorChangeThreshold,
+               !gainedSignage {
                 return (.suppress(reason: "cooldown"), scores)
             }
             if !gained.isEmpty && gained.subtracting(announcedTopics).isEmpty {
                 return (.suppress(reason: "alreadyAnnounced"), scores)
             }
-            if change < changeThreshold { return (.suppress(reason: "noMaterialChange"), scores) }
+            // New signage is material by definition, even held steady.
+            if change < changeThreshold, !gainedSignage { return (.suppress(reason: "noMaterialChange"), scores) }
             if sal < (verbosityThresholds[goal.verbosity] ?? 0.60) {
                 return (.suppress(reason: "notSalient"), scores)
             }

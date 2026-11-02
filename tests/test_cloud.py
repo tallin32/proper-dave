@@ -36,6 +36,13 @@ def test_refinement_floor_adds_watch_target():
         assert any("elevator" in t or "gym" in t for t in patched.targets), (text, patched.targets)
 
 
+def test_change_metrics_motion_wire_field():
+    from proper_dave.models import ChangeMetrics
+    assert ChangeMetrics(motion=0.4).model_dump(by_alias=True)["motion"] == 0.4
+    # Old payloads without the field decode as unmeasured.
+    assert ChangeMetrics.model_validate({"pixelDiff": 0.1}).motion == -1.0
+
+
 def test_fake_continuing_what_you_see_is_detailed_describe():
     goal = FakeCloudModel().parse_goal("Keep telling me what you see")
     assert goal.kind == "describe" and goal.verbosity == "detailed"

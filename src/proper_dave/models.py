@@ -33,6 +33,9 @@ class ChangeMetrics(Wire):
     # Mean frame luminance 0..1; -1 when the source did not measure
     # it (old payloads, scripted sources).
     brightness: float = Field(default=-1.0, alias="brightness")
+    # Peak frame-to-frame luma motion since the previous digest,
+    # 0..1; -1 when unmeasured. Mirrors ChangeMetrics.motion.
+    motion: float = Field(default=-1.0, alias="motion")
 
 
 class FrameDigest(Wire):

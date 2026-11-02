@@ -21,15 +21,24 @@ public struct ChangeMetrics: Codable, Equatable, Sendable {
     /// Mean frame luminance, 0 (black) to 1 (white); -1 when the
     /// source did not measure it (old payloads, scripted sources).
     public var brightness: Double
-    public init(pixelDiff: Double = 0, labelDelta: Double = 0, brightness: Double = -1) {
-        self.pixelDiff = pixelDiff; self.labelDelta = labelDelta; self.brightness = brightness
+    /// Peak frame-to-frame luma motion since the previous digest,
+    /// 0 (still) to 1 (total change); -1 when unmeasured. Measured
+    /// per camera frame at full rate, unlike pixelDiff/labelDelta,
+    /// which compare digest label sets seconds apart and saturate
+    /// mid-swing (OOrion comparison, owner field note 2026-11-02).
+    public var motion: Double
+    public init(pixelDiff: Double = 0, labelDelta: Double = 0, brightness: Double = -1,
+                motion: Double = -1) {
+        self.pixelDiff = pixelDiff; self.labelDelta = labelDelta
+        self.brightness = brightness; self.motion = motion
     }
-    private enum CodingKeys: String, CodingKey { case pixelDiff, labelDelta, brightness }
+    private enum CodingKeys: String, CodingKey { case pixelDiff, labelDelta, brightness, motion }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         pixelDiff = try c.decodeIfPresent(Double.self, forKey: .pixelDiff) ?? 0
         labelDelta = try c.decodeIfPresent(Double.self, forKey: .labelDelta) ?? 0
         brightness = try c.decodeIfPresent(Double.self, forKey: .brightness) ?? -1
+        motion = try c.decodeIfPresent(Double.self, forKey: .motion) ?? -1
     }
 }
 

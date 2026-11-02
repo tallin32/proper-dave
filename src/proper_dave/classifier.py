@@ -208,11 +208,20 @@ def _run(digest, window, goal, last_callout, since, reported, announced, cooldow
             lit = dict(change=max(change, min(1.0, b_delta / 0.35)),
                        relevance=max(sal, 0.6), saliency=sal, topics=topics)
             return Decision("escalateFrame", confidence=max(sal, 0.6), **lit)
-        if since is not None and since < cooldown_s and change < MAJOR_CHANGE:
+        # Sign-borne content bypasses the cooldown (mirrors Swift;
+        # field log 14:00 — sign digests trapped at relevance
+        # 0.80-0.90). The class is saliency-defined, not text-only:
+        # pictogram signs carry no OCR. Saliency still gates below.
+        ocr_texts = {t.text.lower() for t in digest.ocr_text}
+        gained_signage = any(
+            item in ocr_texts
+            or _item_score(item, False, goal.targets, goal.exclusions) >= 0.75
+            for item in gained)
+        if since is not None and since < cooldown_s and change < MAJOR_CHANGE and not gained_signage:
             return Decision("suppress", "cooldown", **kw)
         if gained and not (gained - set(announced)):
             return Decision("suppress", "alreadyAnnounced", **kw)
-        if change < CHANGE_THRESHOLD:
+        if change < CHANGE_THRESHOLD and not gained_signage:
             return Decision("suppress", "noMaterialChange", **kw)
         if sal < VERBOSITY_THRESHOLDS[goal.verbosity]:
             return Decision("suppress", "notSalient", **kw)
