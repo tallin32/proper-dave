@@ -577,10 +577,37 @@ extension ProperDaveCoreTests {
                       client: EmptyWatchClient(), source: LowLightSource(),
                       interval: 0.05, cooldown: 0)
         try await Task.sleep(for: .seconds(0.8))
+        XCTAssertTrue(session.lowLightOfferPending)
         session.stop()
-        XCTAssertEqual(notices, ["It's quite dark here, so I may be missing things. More light would help me see."],
+        XCTAssertEqual(notices, ["It's quite dark here, so I may be missing things. Want me to keep trying my best in this light? Say yes, or add more light."],
                        "notices: \(notices)")
         XCTAssertTrue(log.events.contains { $0.event == "low_light_diagnostic" })
+    }
+
+    @MainActor
+    func testLowLightOfferAcceptEnablesBestEffort() async throws {
+        // Owner request: on "yes", Dave does the best it can in the
+        // dark — periodic escalations even when the gate suppresses.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        session.start(goalText: "Watch for the elevator",
+                      client: EmptyWatchClient(), source: LowLightSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        XCTAssertTrue(session.lowLightOfferPending)
+        XCTAssertEqual(YesNoAnswer.parse("yes"), true)
+        XCTAssertEqual(YesNoAnswer.parse("Make it so."), true)
+        XCTAssertEqual(YesNoAnswer.parse("No thanks."), false)
+        XCTAssertNil(YesNoAnswer.parse("yes, and watch for the elevator"))
+        XCTAssertNil(YesNoAnswer.parse("stop"))
+        let reply = session.respondToLowLightOffer(accepted: true)
+        XCTAssertTrue(reply?.contains("do my best") == true, reply ?? "nil")
+        XCTAssertFalse(session.lowLightOfferPending)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertTrue(log.events.contains { $0.event == "low_light_offer_answered" && $0.detail == "accepted" })
+        XCTAssertTrue(log.events.contains { $0.event == "low_light_best_effort" },
+                      "events: \(log.events.map(\.event))")
     }
 
     @MainActor

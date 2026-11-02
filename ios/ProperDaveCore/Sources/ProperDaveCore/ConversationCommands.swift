@@ -101,3 +101,29 @@ public enum ConversationCommand: Equatable, Sendable {
         }
     }
 }
+
+/// Whole-utterance yes/no answers, for questions Dave itself asks
+/// (currently the low-light best-effort offer). Whole-utterance
+/// only, like commands, so "yes, and watch for the elevator" is a
+/// refinement, not an answer. "Stop" is deliberately absent: it
+/// always means stop watching, never "no".
+public enum YesNoAnswer {
+    private static let yes: Set<String> = ["yes", "yeah", "yep", "sure",
+                                           "ok", "okay", "go ahead",
+                                           "try anyway", "keep trying",
+                                           "do your best", "yes please",
+                                           "please do", "make it so"]
+    private static let no: Set<String> = ["no", "nope", "no thanks",
+                                          "don't bother", "do not bother",
+                                          "never mind", "nevermind", "not now"]
+
+    public static func parse(_ rawText: String) -> Bool? {
+        var text = rawText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("please ") { text = String(text.dropFirst("please ".count)) }
+        if yes.contains(text) { return true }
+        if no.contains(text) { return false }
+        return nil
+    }
+}

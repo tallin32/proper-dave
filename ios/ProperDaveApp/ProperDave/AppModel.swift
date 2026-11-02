@@ -496,6 +496,14 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+        // An answer to Dave's own question (the low-light offer)
+        // outranks goal parsing and refinement. Commands above win:
+        // "stop" always stops watching, never means "no".
+        if session.lowLightOfferPending, let answer = YesNoAnswer.parse(text),
+           let reply = session.respondToLowLightOffer(accepted: answer) {
+            log.append(component: "session", event: "conversation_answer", detail: "low-light offer: \(answer)")
+            return reply
+        }
         let questionMarkers = ["what's in front", "what is in front", "what do you see",
                                "in front of the camera", "in front of me"]
         if questionMarkers.contains(where: low.contains) {
@@ -533,6 +541,13 @@ final class AppModel: ObservableObject {
     func refineWatching(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // A yes/no here may be answering Dave's low-light offer,
+        // not refining the goal.
+        if session.lowLightOfferPending, let answer = YesNoAnswer.parse(trimmed),
+           let reply = session.respondToLowLightOffer(accepted: answer) {
+            speaker.speak(reply)
+            return
+        }
         session.refineGoal(text: trimmed)
     }
 
