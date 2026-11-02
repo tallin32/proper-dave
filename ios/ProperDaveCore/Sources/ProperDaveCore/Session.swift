@@ -635,6 +635,20 @@ public final class SessionController: ObservableObject {
                             ? "The model is rate limited right now. I'll keep watching and try again shortly."
                             : "The model isn't responding right now. I'll keep watching and try again shortly.")
                     }
+                } else if reason == "already_reported", goal.kind == .describe,
+                          goal.verbosity == .detailed, scores.change >= 0.80 {
+                    // The gate measured a near-total change and the
+                    // model still claims the view was reported: that
+                    // judgement is not the model's to re-make (field
+                    // log 04:24 — already_reported returned even with
+                    // the narrowed prompt, server restarted). Speak
+                    // the digest's own confident labels rather than
+                    // accept silence for a scene the user is plainly
+                    // no longer looking at. Detailed verbosity only:
+                    // quieter modes opted out of label-level reports.
+                    log.append(sessionID: sessionID, component: "session", event: "already_reported_overridden",
+                               detail: "change=\(String(format: "%.2f", scores.change))")
+                    speakDescribeBaselineFallback()
                 } else if isDescribeBaseline {
                     speakDescribeBaselineFallback()
                 }
