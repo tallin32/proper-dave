@@ -320,6 +320,8 @@ public final class SessionController: ObservableObject {
         // have failed to deposit for want of exactly this sentence.
         var lowLightAnnounced = false
         var lastBestEffortEscalation: Date?
+        var settledSceneUsed = false
+        var motionSinceEscalation = false
         func announceLowLightIfNeeded(_ digest: FrameDigest) {
             let lum = digest.sceneChange.brightness
             guard !lowLightAnnounced, lum >= 0, lum < 0.12 else { return }
@@ -477,6 +479,29 @@ public final class SessionController: ObservableObject {
                     source.setCadence(target)
                     log.append(sessionID: sessionID, component: "capture", event: "cadence_changed",
                                detail: "interval=\(target)s meanChange=\(String(format: "%.2f", mean))")
+                }
+            }
+            // Settled-scene escalation (describe goals): while the
+            // user pans, scenes inside the cooldown are absorbed
+            // unsampled — but motion followed by a hold is the user
+            // presenting a scene ("zoom in on the laptop logo",
+            // field log 04:24). A hold after real motion earns one
+            // model look even when saliency suppressed, once per
+            // settle, and only after the previous escalation has
+            // had time to land. Scene-change goals have their own
+            // stability path and are excluded.
+            if scores.change >= 0.5 { motionSinceEscalation = true; settledSceneUsed = false }
+            if decision.isEscalation { motionSinceEscalation = false }
+            if goal.kind == .describe, !goal.isSceneChangeGoal,
+               !decision.isEscalation, !settledSceneUsed, motionSinceEscalation,
+               let lastEscalationAt, Date().timeIntervalSince(lastEscalationAt) >= 5 {
+                let changes = recentChanges + [scores.change]
+                if changes.suffix(2).allSatisfy({ $0 <= 0.20 }) {
+                    settledSceneUsed = true
+                    motionSinceEscalation = false
+                    log.append(sessionID: sessionID, component: "session", event: "settled_scene_escalation",
+                               detail: "held scene after motion, despite \(decision.name)")
+                    decision = .escalateDigest(confidence: scores.change, landmark: nil)
                 }
             }
             // Best-effort in the dark (user accepted the low-light
