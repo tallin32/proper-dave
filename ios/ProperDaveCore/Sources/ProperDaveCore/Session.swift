@@ -322,6 +322,7 @@ public final class SessionController: ObservableObject {
         var lastBestEffortEscalation: Date?
         var settledSceneUsed = false
         var motionSinceEscalation = false
+        var previousMotion = -1.0
         func announceLowLightIfNeeded(_ digest: FrameDigest) {
             let lum = digest.sceneChange.brightness
             guard !lowLightAnnounced, lum >= 0, lum < 0.12 else { return }
@@ -463,7 +464,7 @@ public final class SessionController: ObservableObject {
                 secondsSinceEscalation: since, reportedLandmarks: reportedLandmarks,
                 announcedTopics: announcedTopics, cooldown: cooldown)
             log.append(sessionID: sessionID, component: "classifier", event: "decision",
-                       detail: "#\(digest.sequence) \(decision.name) change=\(String(format: "%.2f", scores.change)) relevance=\(String(format: "%.2f", scores.relevance)) lum=\(digest.sceneChange.brightness >= 0 ? String(format: "%.2f", digest.sceneChange.brightness) : "n/a") src=\(digest.sourceID)")
+                       detail: "#\(digest.sequence) \(decision.name) change=\(String(format: "%.2f", scores.change)) relevance=\(String(format: "%.2f", scores.relevance)) lum=\(digest.sceneChange.brightness >= 0 ? String(format: "%.2f", digest.sceneChange.brightness) : "n/a") mot=\(digest.sceneChange.motion >= 0 ? String(format: "%.2f", digest.sceneChange.motion) : "n/a") src=\(digest.sourceID)")
             decisionTrail.append("#\(digest.sequence) \(decision.name)")
             if decisionTrail.count > 30 { decisionTrail.removeFirst() }
             // Cadence control: read the observed change rate over
@@ -490,13 +491,26 @@ public final class SessionController: ObservableObject {
             // settle, and only after the previous escalation has
             // had time to land. Scene-change goals have their own
             // stability path and are excluded.
-            if scores.change >= 0.5 { motionSinceEscalation = true; settledSceneUsed = false }
+            if scores.change >= 0.5 || digest.sceneChange.motion >= 0.30 {
+                // Motion re-arms the *opportunity* to settle, but
+                // settledSceneUsed only resets when an escalation
+                // actually goes out (below) — otherwise every
+                // label-churning digest re-arms it and it refires
+                // per digest (field log 14:01: dozens of settled
+                // events dying in backoff).
+                motionSinceEscalation = true
+            }
             if decision.isEscalation { motionSinceEscalation = false }
             if goal.kind == .describe, !goal.isSceneChangeGoal,
                !decision.isEscalation, !settledSceneUsed, motionSinceEscalation,
                let lastEscalationAt, Date().timeIntervalSince(lastEscalationAt) >= 5 {
-                let changes = recentChanges + [scores.change]
-                if changes.suffix(2).allSatisfy({ $0 <= 0.20 }) {
+                // Held = measured motion stopped, when the source
+                // measures it; label-change settling is the fallback
+                // for sources that don't (glasses, scripted).
+                let held = digest.sceneChange.motion >= 0 && previousMotion >= 0
+                    ? (digest.sceneChange.motion <= 0.15 && previousMotion <= 0.15)
+                    : (recentChanges + [scores.change]).suffix(2).allSatisfy({ $0 <= 0.20 })
+                if held {
                     settledSceneUsed = true
                     motionSinceEscalation = false
                     log.append(sessionID: sessionID, component: "session", event: "settled_scene_escalation",
@@ -504,6 +518,7 @@ public final class SessionController: ObservableObject {
                     decision = .escalateDigest(confidence: scores.change, landmark: nil)
                 }
             }
+            previousMotion = digest.sceneChange.motion
             // Best-effort in the dark (user accepted the low-light
             // offer): escalate periodically even when the gate
             // suppresses, so the model gets its chance to do the
@@ -531,6 +546,7 @@ public final class SessionController: ObservableObject {
             if let landmark = scores.landmark { reportedLandmarks.insert(landmark) }
             if goal.kind == .describe { announcedTopics.formUnion(scores.topics) }
             lastEscalationAt = Date()
+            settledSceneUsed = false
             escalationCount += 1
             let image = source.imageData(for: digest)?.base64EncodedString()
             let request = EscalationRequest(sessionID: sessionID, goal: goal, digest: digest,
@@ -550,7 +566,11 @@ public final class SessionController: ObservableObject {
                 // bathroom produced a phantom "night sky" in the
                 // field. Below the bar, the honest report is the
                 // dark/blank one.
-                let visible = digest.labels.filter { $0.confidence >= 0.5 }.map(\.name) + digest.ocrText.map(\.text)
+                // Vision taxonomy IDs ("wood_processed") are not
+                // speech; humanize before they can be spoken.
+                let visible = digest.labels.filter { $0.confidence >= 0.5 }
+                    .map { $0.name.replacingOccurrences(of: "_", with: " ") }
+                    + digest.ocrText.map(\.text)
                 let text = visible.isEmpty
                     ? "I can't make anything out from the camera right now. The view looks dark or blank."
                     : visible.prefix(3).joined(separator: ", ") + " in view."

@@ -11,6 +11,42 @@ import Vision
 struct DigestExtractor {
     private var previous = Set<String>()
     private let ciContext = CIContext()
+    private var previousThumbnail: [UInt8] = []
+    private var motionPeak: Double = -1
+
+    /// Per-frame motion probe (cheap at full camera rate): a
+    /// 32x24 luma thumbnail diffed against the previous frame.
+    /// Returns this frame's motion 0..1, and tracks the peak since
+    /// the last digest, which digest() attaches and resets. This
+    /// is the frame-rate change signal label deltas cannot give:
+    /// mid-swing, Vision labels vanish, but the pixels still move.
+    mutating func noteFrame(pixelBuffer: CVPixelBuffer) -> Double {
+        guard let thumb = thumbnail(pixelBuffer) else { return -1 }
+        defer { previousThumbnail = thumb }
+        guard previousThumbnail.count == thumb.count, !thumb.isEmpty else { return -1 }
+        var total = 0
+        for i in thumb.indices { total += abs(Int(thumb[i]) - Int(previousThumbnail[i])) }
+        let value = Double(total) / Double(thumb.count) / 255.0
+        if value > motionPeak { motionPeak = value }
+        return value
+    }
+
+    private func thumbnail(_ pixelBuffer: CVPixelBuffer) -> [UInt8]? {
+        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        guard image.extent.width > 0, image.extent.height > 0 else { return nil }
+        let scaled = image.transformed(by: CGAffineTransform(
+            scaleX: 32 / image.extent.width, y: 24 / image.extent.height))
+        var bytes = [UInt8](repeating: 0, count: 32 * 24 * 4)
+        ciContext.render(scaled, toBitmap: &bytes, rowBytes: 32 * 4,
+                         bounds: CGRect(x: 0, y: 0, width: 32, height: 24),
+                         format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+        var luma = [UInt8]()
+        luma.reserveCapacity(32 * 24)
+        for i in stride(from: 0, to: bytes.count, by: 4) {
+            luma.append(UInt8((Int(bytes[i]) + Int(bytes[i + 1]) + Int(bytes[i + 2])) / 3))
+        }
+        return luma
+    }
 
     /// Bounded JPEG retention for ESCALATE_FRAME: the model can only
     /// look at a frame the source actually kept.
@@ -46,10 +82,13 @@ struct DigestExtractor {
             : Double(current.symmetricDifference(previous).count)
                 / Double(max(current.union(previous).count, 1))
         previous = current
+        let motion = motionPeak
+        motionPeak = -1
         return FrameDigest(sessionID: sessionID, sequence: sequence, sourceID: sourceID,
                            labels: labels, ocrText: ocr,
                            sceneChange: ChangeMetrics(pixelDiff: delta, labelDelta: delta,
-                                                      brightness: meanLuminance(pixelBuffer: pixelBuffer)))
+                                                      brightness: meanLuminance(pixelBuffer: pixelBuffer),
+                                                      motion: motion))
     }
 
     /// Mean luminance 0..1 via a 1x1 area-average render — cheap at

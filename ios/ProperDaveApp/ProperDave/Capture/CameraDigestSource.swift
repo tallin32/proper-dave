@@ -62,8 +62,19 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        // Every frame feeds the motion probe, even though digests
+        // stay throttled: a motion spike earns an early digest
+        // (event-driven sampling) instead of waiting out the
+        // interval while the scene passes unexamined.
+        var frameMotion = -1.0
+        if let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            frameMotion = extractor.noteFrame(pixelBuffer: buffer)
+        }
         let now = Date()
-        guard now.timeIntervalSince(lastEmitted) >= interval else { return }
+        let elapsed = now.timeIntervalSince(lastEmitted)
+        let due = elapsed >= interval
+        let spike = frameMotion >= 0.30 && elapsed >= 0.4
+        guard due || spike else { return }
         lastEmitted = now
         sequence += 1
         if let digest = extractor.digest(sampleBuffer: sampleBuffer, sessionID: sessionID,

@@ -284,6 +284,39 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(d.isEscalation)
     }
 
+    func testDescribeNewOCRTextBypassesCooldown() {
+        // Field log 14:00: sign-bearing digests (relevance 0.80+)
+        // were trapped by the cooldown while walking. Newly read
+        // text is the highest-value announcement class and must
+        // reach the saliency gate instead of dying in cooldown.
+        let window = [digest(labels: ["corridor"], pixel: 0.3)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["corridor"], ocr: ["NO SMOKING"], pixel: 0.3),
+                                         window: window, goal: dgoal(verbosity: .detailed),
+                                         secondsSinceEscalation: 2, cooldown: 20)
+        XCTAssertTrue(d.isEscalation, "\(d)")
+        // Same scene movement without new text stays in cooldown.
+        let (plain, _) = Classifier.evaluate(digest: digest(labels: ["corridor"], pixel: 0.3),
+                                             window: window, goal: dgoal(verbosity: .detailed),
+                                             secondsSinceEscalation: 2, cooldown: 20)
+        XCTAssertFalse(plain.isEscalation, "\(plain)")
+    }
+
+    func testDescribePictogramSignBypassesCooldown() {
+        // Not every sign is text: a wheelchair or no-smoking
+        // pictogram yields no OCR, but Vision's "sign" label is in
+        // the same saliency class and must fast-lane identically.
+        let window = [digest(labels: ["corridor"], pixel: 0.3)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["corridor", "sign"], pixel: 0.3),
+                                         window: window, goal: dgoal(verbosity: .detailed),
+                                         secondsSinceEscalation: 2, cooldown: 20)
+        XCTAssertTrue(d.isEscalation, "\(d)")
+        // A generic new label is not signage and stays in cooldown.
+        let (plain, _) = Classifier.evaluate(digest: digest(labels: ["corridor", "chair"], pixel: 0.3),
+                                             window: window, goal: dgoal(verbosity: .detailed),
+                                             secondsSinceEscalation: 2, cooldown: 20)
+        XCTAssertFalse(plain.isEscalation, "\(plain)")
+    }
+
     func testDescribeBrightnessSwingBypassesCooldown() {
         // Field log 00:25: a "how well lit" goal's dimming events
         // died under the cooldown; lights changing produces no new
@@ -692,6 +725,47 @@ extension ProperDaveCoreTests {
                       "events: \(log.events.map(\.event))")
         XCTAssertTrue(spoken.count >= 2, "spoken: \(spoken)")
         XCTAssertTrue(spoken.allSatisfy { $0.hasSuffix("in view.") }, "spoken: \(spoken)")
+    }
+
+    final class MotionThenStillSource: DigestSource, @unchecked Sendable {
+        let sourceID = "motion-still"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        // Labels and pixelDiff never change: only the
+                        // measured motion signal swings, then stops.
+                        let motion = sequence <= 30 ? 0.6 : 0.02
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: [ScoredLabel(name: "screen", confidence: 0.9)],
+                            sceneChange: ChangeMetrics(pixelDiff: 0.02, brightness: 0.30,
+                                                       motion: motion)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    @MainActor
+    func testSettledSceneUsesMeasuredMotion() async throws {
+        // Motion signal alone (labels static, change ~0) must be
+        // able to drive the settled-scene escalation: the camera
+        // moved, then held — that is a presented scene.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: MotionThenStillSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(7))
+        session.stop()
+        XCTAssertTrue(log.events.contains { $0.event == "settled_scene_escalation" },
+                      "events: \(log.events.map(\.event))")
     }
 
     @MainActor
