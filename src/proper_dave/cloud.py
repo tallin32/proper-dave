@@ -143,6 +143,9 @@ class FakeCloudModel:
                            "keep telling", "keep describing", "keep me posted",
                            "keep me updated", "continue telling",
                            "continue describing", "continue to tell",
+                           "keep watching", "keep looking",
+                           "continue watching", "continue looking",
+                           "keep an eye",
                            "continuously")
 
     def parse_goal(self, raw_text: str) -> GoalContext:

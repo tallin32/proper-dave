@@ -598,6 +598,102 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(log.events.contains { $0.event == "low_light_diagnostic" })
     }
 
+    final class SwingThenSettleSource: DigestSource, @unchecked Sendable {
+        let sourceID = "swing-settle"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        // ~2s of swinging (same labels, total pixel
+                        // change), then a held scene.
+                        let pixel = sequence <= 40 ? 1.0 : 0.02
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: [ScoredLabel(name: "screen", confidence: 0.9)],
+                            sceneChange: ChangeMetrics(pixelDiff: pixel, brightness: 0.30)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    @MainActor
+    func testSettledSceneAfterMotionEscalates() async throws {
+        // Field log 04:24: scenes presented inside the cooldown
+        // were absorbed unsampled. Motion then a hold must earn
+        // one model look even when saliency suppresses.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: SwingThenSettleSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(7))
+        session.stop()
+        XCTAssertTrue(log.events.contains { $0.event == "settled_scene_escalation" },
+                      "decisions: \(log.events.filter { $0.event == "decision" }.suffix(12).map(\.detail))")
+    }
+
+    final class AlreadyReportedClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "already-reported"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .detailed)
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "already_reported")
+        }
+    }
+
+    final class RotatingSceneSource: DigestSource, @unchecked Sendable {
+        let sourceID = "rotating"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    let sets = [["window", "fan", "box"], ["desk", "lamp", "chair"],
+                                ["door", "screen", "plant"], ["book", "table", "phone"],
+                                ["sink", "mirror", "towel"], ["bed", "pillow", "clock"]]
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        let names = sets[(sequence - 1) % sets.count]
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: names.map { ScoredLabel(name: $0, confidence: 0.9) },
+                            sceneChange: ChangeMetrics(pixelDiff: 1.0, brightness: 0.30)))
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    @MainActor
+    func testAlreadyReportedOverriddenOnTotalChange() async throws {
+        // Field log 04:24: with the narrowed prompt and a restarted
+        // server, the model still answered already_reported to
+        // near-total scene changes. The gate's judgement stands:
+        // the digest's confident labels are spoken instead.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: AlreadyReportedClient(), source: RotatingSceneSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(1.2))
+        session.stop()
+        XCTAssertTrue(log.events.contains { $0.event == "already_reported_overridden" },
+                      "events: \(log.events.map(\.event))")
+        XCTAssertTrue(spoken.count >= 2, "spoken: \(spoken)")
+        XCTAssertTrue(spoken.allSatisfy { $0.hasSuffix("in view.") }, "spoken: \(spoken)")
+    }
+
     @MainActor
     func testLowLightOfferAcceptEnablesBestEffort() async throws {
         // Owner request: on "yes", Dave does the best it can in the
@@ -667,6 +763,12 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(GoalIntent.intentGoal(for: "Continue telling me what is in front of this camera.")?.kind, .describe)
         XCTAssertEqual(GoalIntent.intentGoal(for: "Keep telling me what you see")?.kind, .describe)
         XCTAssertNil(GoalIntent.questionGoal(for: "Continue telling me what is in front of this camera."))
+        // Field log 04:19: "keep watching the camera and tell me
+        // what you see" was misread as a one-shot question; the
+        // goal answered once and ended while the user kept waving
+        // the phone. "Keep watching" is continuing intent.
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep watching the camera and tell me what you see.")?.kind, .describe)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep an eye out and tell me what you see")?.kind, .describe)
     }
 
     func testCompoundGoalRetainsWatchTargets() {
