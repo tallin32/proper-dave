@@ -145,6 +145,9 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Record point-of-view footage while watching", isOn: $model.povRecordingEnabled)
+                    Toggle("Record sessions for replay", isOn: $model.sessionRecordingEnabled)
+                    Text("Replay recordings keep each goal's digests and frames (last 10 sessions) so the walk can be re-run through the classifier from the Log tab. On-device only; sending a session to the dev server is manual, per session.")
+                        .font(.footnote).foregroundStyle(.secondary)
                     LabeledContent("Frames recorded", value: "\(model.povRecorder.frameCount)")
                     Button {
                         model.exportPOVFootage()

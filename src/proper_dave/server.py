@@ -3,6 +3,8 @@ Env: PROPER_DAVE_PORT, PROPER_DAVE_API_KEY, PROPER_DAVE_SERVER_LOG,
 PROPER_DAVE_MIN_INTERVAL_S (server anti-storm backstop, default 10),
 PROPER_DAVE_MODEL_BACKEND (fake|local|frontier, default fake) plus
 PROPER_DAVE_LOCAL_* / PROPER_DAVE_FRONTIER_* (see model_backends.py).
+PROPER_DAVE_ALLOW_DEV_UPLOADS=1 enables POST /v1/dev/sessions/... bundle
+uploads into PROPER_DAVE_SESSION_UPLOAD_DIR (default recorded-sessions/).
 The client never sees which back end is live (CLD-04).
 """
 
@@ -12,6 +14,7 @@ import base64
 import binascii
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -33,7 +36,8 @@ def _err(status: int, code: str, message: str) -> JSONResponse:
 
 def create_app(client: CloudModelClient | None = None, *, api_key: str | None = None,
                min_interval_s: float = MIN_INTERVAL_S,
-               log_path: str | None = None) -> FastAPI:
+               log_path: str | None = None,
+               dev_upload_dir: str | None = None) -> FastAPI:
     model = client or FakeCloudModel()
     last_seen: dict[str, float] = {}
     app = FastAPI(title="Proper Dave MVP server", version="0.1.0")
@@ -120,6 +124,33 @@ def create_app(client: CloudModelClient | None = None, *, api_key: str | None = 
              "latencyMs": round((time.monotonic() - started) * 1000)})
         return result
 
+    @app.post("/v1/dev/sessions/{session_id}/files/{file_path:path}")
+    async def dev_upload(session_id: str, file_path: str, request: Request):
+        # Recorded-session upload (developer feature): the phone
+        # sends a bundle file-by-file so the walk — JPGs included —
+        # can be analyzed on the workstation. Disabled unless the
+        # server was started with PROPER_DAVE_ALLOW_DEV_UPLOADS=1;
+        # never a contribution/training path (TRD-003 §7 stays parked).
+        if dev_upload_dir is None:
+            return _err(404, "not_found", "Dev uploads are not enabled on this server.")
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", session_id):
+            return _err(400, "bad_request", "Bad session id.")
+        parts = Path(file_path).parts
+        allowed = parts in [("meta.json",), ("digests.jsonl",), ("log.jsonl",)] or (
+            len(parts) == 2 and parts[0] == "frames"
+            and parts[1].endswith(".jpg") and parts[1][:-4].isdigit())
+        if not allowed or ".." in parts or Path(file_path).is_absolute():
+            return _err(400, "bad_request", "File path is not part of a session bundle.")
+        body = await request.body()
+        if len(body) > 10 * 1024 * 1024:
+            return _err(413, "payload_too_large", "File is too large.")
+        dest = Path(dev_upload_dir) / session_id / file_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(body)
+        log({"component": "server", "event": "session_file_received",
+             "sessionID": session_id, "detail": f"{file_path} {len(body)}B"})
+        return {"stored": file_path, "bytes": len(body)}
+
     return app
 
 
@@ -143,11 +174,18 @@ def main() -> None:
         print("proper-dave-server: WARNING: fake backend — set "
               "PROPER_DAVE_MODEL_BACKEND=local or frontier for a real model.",
               file=sys.stderr)
+    dev_uploads = os.environ.get("PROPER_DAVE_ALLOW_DEV_UPLOADS") == "1"
+    if dev_uploads:
+        print("proper-dave-server: dev session uploads ENABLED -> "
+              f"{os.environ.get('PROPER_DAVE_SESSION_UPLOAD_DIR', 'recorded-sessions')}",
+              file=sys.stderr)
     configured = create_app(
         client=model,
         api_key=os.environ.get("PROPER_DAVE_API_KEY") or None,
         min_interval_s=float(os.environ.get("PROPER_DAVE_MIN_INTERVAL_S") or MIN_INTERVAL_S),
-        log_path=os.environ.get("PROPER_DAVE_SERVER_LOG") or None)
+        log_path=os.environ.get("PROPER_DAVE_SERVER_LOG") or None,
+        dev_upload_dir=(os.environ.get("PROPER_DAVE_SESSION_UPLOAD_DIR", "recorded-sessions")
+                        if dev_uploads else None))
     uvicorn.run(configured, host="0.0.0.0",
                 port=int(os.environ.get("PROPER_DAVE_PORT", "3283")))
 

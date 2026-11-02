@@ -24,17 +24,43 @@ struct LogView: View {
                 ForEach(components, id: \.self) { Text($0).tag($0) }
             }
             .pickerStyle(.segmented).padding(.horizontal)
-            List(shown) { event in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(event.component) · \(event.event)").font(.footnote.weight(.semibold).monospaced())
-                    if !event.detail.isEmpty {
-                        Text(event.detail).font(.footnote.monospaced()).foregroundStyle(.secondary)
+            List {
+                if !model.recordedSessions.isEmpty {
+                    Section("Recorded sessions") {
+                        ForEach(model.recordedSessions, id: \.id) { meta in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(meta.goalText).font(.footnote.weight(.semibold))
+                                Text("\(meta.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(meta.digestCount) digests · \(meta.frameCount) frames · \(ByteCountFormatter.string(fromByteCount: Int64(RecordedSessionStore.byteSize(base: AppModel.recordingsBase, id: meta.id)), countStyle: .file))")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                HStack(spacing: 16) {
+                                    Button("Replay") { model.replayRecordedSession(meta) }
+                                    Button(model.sendingSessionID == meta.id ? "Sending…" : "Send to dev server") {
+                                        model.sendRecordedSession(meta)
+                                    }
+                                    .disabled(model.sendingSessionID != nil)
+                                    Button("Delete", role: .destructive) { model.deleteRecordedSession(meta) }
+                                }
+                                .font(.footnote)
+                            }
+                            .padding(.vertical, 2)
+                        }
                     }
-                    Text(event.ts.formatted(date: .omitted, time: .standard))
-                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+                Section {
+                    ForEach(shown) { event in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(event.component) · \(event.event)").font(.footnote.weight(.semibold).monospaced())
+                            if !event.detail.isEmpty {
+                                Text(event.detail).font(.footnote.monospaced()).foregroundStyle(.secondary)
+                            }
+                            Text(event.ts.formatted(date: .omitted, time: .standard))
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
                 }
             }
             .listStyle(.plain)
+            .onAppear { model.refreshRecordedSessions() }
         }
         .navigationTitle("Debug log")
         .toolbar {

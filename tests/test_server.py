@@ -115,3 +115,24 @@ def test_main_announces_model_and_warns_on_fake(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "model = fake-cloud-model" in err
     assert "WARNING: fake backend" in err
+
+
+def test_dev_upload_disabled_by_default(tmp_path):
+    c = client()
+    r = c.post(f"/v1/dev/sessions/{SID}/files/meta.json", content=b"{}")
+    assert r.status_code == 404
+
+
+def test_dev_upload_stores_bundle_files(tmp_path):
+    c = client(dev_upload_dir=str(tmp_path))
+    r = c.post(f"/v1/dev/sessions/{SID}/files/digests.jsonl", content=b"{}\n")
+    assert r.status_code == 200 and r.json()["bytes"] == 3
+    r = c.post(f"/v1/dev/sessions/{SID}/files/frames/000001.jpg", content=b"\xff\xd8jpeg")
+    assert r.status_code == 200
+    assert (tmp_path / SID / "frames" / "000001.jpg").read_bytes() == b"\xff\xd8jpeg"
+    # Traversal and non-bundle paths are refused, nothing escapes.
+    r = c.post(f"/v1/dev/sessions/{SID}/files/../evil.jpg", content=b"x")
+    assert r.status_code in (400, 404)
+    r = c.post(f"/v1/dev/sessions/{SID}/files/notes.txt", content=b"x")
+    assert r.status_code == 400
+    assert not (tmp_path / "evil.jpg").exists()
