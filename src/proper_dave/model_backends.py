@@ -49,7 +49,11 @@ current scene ("what's in front of the camera", "what do you see right
 now") — a question is answered from the first frame and never becomes
 a watch — else "watch". For describe, targets are focus categories
 (shops, building names, people, signs, landmarks) and may be empty;
-verbosity sets how much counts as notable. Otherwise targets are concrete
+a narration request may also name specific things to watch for
+("...including apartment numbers; tell me when I approach the gym") —
+that is still describe, and the named things belong in targets so
+narration prioritises them. Verbosity sets how much counts as
+notable. Otherwise targets are concrete
 visible things: sign text, place names, gate or floor numbers.
 progressLandmarks names a visible progression to report along the way
 (e.g. "gate numbers") when the goal implies passing intermediate markers, else null."""
@@ -69,7 +73,10 @@ Reply with JSON only, no prose, in exactly one of these shapes:
 {"kind": "callout", "text": "...", "relevance": 0.0-1.0}
 {"kind": "noCallout", "reason": "not_relevant" | "already_reported" | "low_confidence"}
 For "describe" goals: summarise only what is newly notable (named places
-verbatim, entrances, obstacles), never an exhaustive inventory, never
+verbatim, entrances, obstacles). If targets name a place or thing the
+user is approaching, announce it when it becomes visible even if its
+visible wording differs from the target name (a target of "gym" may be
+signed "fitness center"). Never an exhaustive inventory, never
 transient litter unless verbosity is "detailed", never repeat covered
 topics, and describe people only as aggregate activity. If targets
 include "scene changes", an escalation means the view has materially

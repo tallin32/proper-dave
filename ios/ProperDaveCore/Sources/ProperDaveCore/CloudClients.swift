@@ -85,7 +85,24 @@ public extension GoalPatch {
     /// demo can still patch a goal, and its phrase table is a test
     /// fixture, not a user interface.
     static func deterministic(refinement: String) -> GoalPatch {
-        let low = refinement.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        var low = refinement.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Discourse filler leads many spoken refinements ("while
+        // you're at it, keep an eye out for the elevator"); strip it
+        // so the operative clause leads. (Field log 03:17 — dictation
+        // even rendered this "fire at it", so matching on what
+        // follows the filler is what makes the refinement robust.)
+        for filler in ["while you're at it ", "while you are at it ",
+                       "while you were at it "] where low.hasPrefix(filler) {
+            low = String(low.dropFirst(filler.count)); break
+        }
+        func cleaned(_ raw: Substring) -> String {
+            var s = raw.trimmingCharacters(in: .whitespacesAndNewlines
+                .union(.punctuationCharacters))
+            for prefix in ["the ", "a ", "an "] where s.hasPrefix(prefix) {
+                s = String(s.dropFirst(prefix.count)); break
+            }
+            return s.trimmingCharacters(in: .whitespaces)
+        }
         var patch = GoalPatch()
         if low.contains("landmark") && (low.contains("just") || low.contains("only")) {
             patch.verbosity = .landmarks
@@ -105,6 +122,16 @@ public extension GoalPatch {
         for marker in ["include ", "add "] where low.hasPrefix(marker) {
             let item = low.dropFirst(marker.count).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             if !item.isEmpty { patch.addTargets.append(item) }
+        }
+        // "Keep an eye out for X" / "watch for X" anywhere in the
+        // utterance adds a watch target (field log 03:17).
+        for marker in ["keep an eye out for ", "keep an eye on ",
+                       "look out for ", "watch out for ",
+                       "also watch for ", "eye out for ", "watch for "] {
+            guard let range = low.range(of: marker) else { continue }
+            let item = cleaned(low[range.upperBound...])
+            if !item.isEmpty { patch.addTargets.append(item) }
+            break
         }
         return patch
     }
@@ -162,6 +189,9 @@ public struct DemoCloudClient: CloudModelClient {
             var verbosity: Verbosity = .notable
             if lowered.contains("landmark") && (lowered.contains("just") || lowered.contains("only")) { verbosity = .landmarks }
             if lowered.contains("everything") || lowered.contains("detail") { verbosity = .detailed }
+            for extra in GoalIntent.compoundTargets(in: lowered) where !focus.contains(extra) {
+                focus.append(extra)
+            }
             return GoalContext(rawText: rawText, targets: focus.sorted(), kind: .describe, verbosity: verbosity)
         }
         var targets: [String] = []

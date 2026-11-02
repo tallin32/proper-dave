@@ -224,6 +224,16 @@ public final class SessionController: ObservableObject {
                 log.append(sessionID: sessionID, component: "session", event: "goal_refined",
                            detail: "verbosity=\(patched.verbosity.rawValue) targets=\(patched.targets.joined(separator: ",")) exclusions=\(patched.exclusions.joined(separator: ","))")
                 onNotice?("Goal updated.")
+            } catch where !GoalPatch.deterministic(refinement: text).isEmpty {
+                // Deterministic floor beneath the model parser: a
+                // phrasing the model declines ("keep an eye out for
+                // the elevator", field log 03:17) must still apply
+                // rather than fail the refinement outright.
+                let patched = GoalPatch.deterministic(refinement: text).applied(to: current)
+                goal = patched
+                log.append(sessionID: sessionID, component: "session", event: "goal_refined",
+                           detail: "verbosity=\(patched.verbosity.rawValue) targets=\(patched.targets.joined(separator: ",")) exclusions=\(patched.exclusions.joined(separator: ",")) (deterministic floor)")
+                onNotice?("Goal updated.")
             } catch {
                 log.append(sessionID: sessionID, component: "session", event: "goal_refine_failed",
                            detail: text)

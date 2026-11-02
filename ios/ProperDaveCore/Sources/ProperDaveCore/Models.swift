@@ -179,13 +179,34 @@ public enum GoalIntent {
         if sceneChangeMarkers.contains(where: low.contains) {
             return GoalContext(rawText: rawText, targets: ["scene changes"], kind: .describe)
         }
+        // "Tell me about the bottle I'm holding" is a one-shot
+        // question about a named thing in view, not a watch: answer
+        // it from the current frame (field log 03:16 — this phrasing
+        // confused the model parser into watch/describe goals).
+        if low.hasPrefix("tell me about ") {
+            var target = String(low.dropFirst("tell me about ".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines
+                    .union(.punctuationCharacters))
+            for prefix in ["the ", "a ", "an ", "this ", "that "]
+            where target.hasPrefix(prefix) {
+                target = String(target.dropFirst(prefix.count)); break
+            }
+            for suffix in [" i'm holding", " i am holding", " in my hand",
+                           " i'm looking at", " here"] where target.hasSuffix(suffix) {
+                target = String(target.dropLast(suffix.count)); break
+            }
+            if target.count > 1 {
+                return GoalContext(rawText: rawText, targets: [target], kind: .question)
+            }
+        }
         guard questionMarkers.contains(where: low.contains) else { return nil }
         if continuingMarkers.contains(where: low.contains) {
             // "Keep telling me what you see" is an explicit request
             // for ongoing narration, so generic visible topics earn
             // speech at the detailed threshold rather than waiting
             // for stroll-notable landmarks.
-            return GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .detailed)
+            return GoalContext(rawText: rawText, targets: compoundTargets(in: low),
+                               kind: .describe, verbosity: .detailed)
         }
         return GoalContext(rawText: rawText,
                            targets: ["the scene in front of the camera"], kind: .question)
@@ -193,6 +214,53 @@ public enum GoalIntent {
     public static func questionGoal(for rawText: String) -> GoalContext? {
         guard let goal = intentGoal(for: rawText), goal.kind == .question else { return nil }
         return goal
+    }
+
+    /// Compound-goal retention: a narration request may also name
+    /// specific things to watch for ("continue telling me what I
+    /// pass, including apartment numbers and elevators; tell me
+    /// when I approach my building's gym"). The describe keeps
+    /// those names as targets so saliency prioritises them and the
+    /// evaluating model knows what the user is approaching. Before
+    /// this, the deterministic floor dropped the watch clause
+    /// entirely (gym field walk).
+    public static func compoundTargets(in low: String) -> [String] {
+        var out: [String] = []
+        func clean(_ piece: Substring) -> String {
+            var s = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".;"))
+            for prefix in ["the ", "my ", "a ", "an "] where s.hasPrefix(prefix) {
+                s = String(s.dropFirst(prefix.count)); break
+            }
+            return s.trimmingCharacters(in: .whitespaces)
+        }
+        func add(_ piece: Substring) {
+            let value = clean(piece)
+            if value.count > 1, !out.contains(value) { out.append(value) }
+        }
+        if let range = low.range(of: "including ") {
+            var tail = low[range.upperBound...]
+            for stop in [";", " tell me when", " let me know when"] {
+                if let s = tail.range(of: stop) { tail = tail[..<s.lowerBound] }
+            }
+            for part in tail.split(separator: ",") {
+                for piece in part.components(separatedBy: " and ") { add(Substring(piece)) }
+            }
+        }
+        let watchMarkers = ["tell me when i approach ", "tell me when i reach ",
+                            "tell me when i get to ", "tell me when you see ",
+                            "let me know when i approach ", "let me know when i reach ",
+                            "let me know when you see "]
+        for marker in watchMarkers {
+            guard let range = low.range(of: marker) else { continue }
+            var tail = low[range.upperBound...]
+            var cut = tail.endIndex
+            for stop in [",", ";", ".", " and tell", " and let"] {
+                if let s = tail.range(of: stop), s.lowerBound < cut { cut = s.lowerBound }
+            }
+            add(tail[..<cut])
+        }
+        return Array(out.prefix(6))
     }
 }
 

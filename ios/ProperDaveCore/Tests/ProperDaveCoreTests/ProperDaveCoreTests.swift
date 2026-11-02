@@ -628,6 +628,41 @@ extension ProperDaveCoreTests {
         XCTAssertNil(GoalIntent.questionGoal(for: "Continue telling me what is in front of this camera."))
     }
 
+    func testCompoundGoalRetainsWatchTargets() {
+        // Gym field walk: narration plus named things to watch for
+        // must arrive as ONE describe goal carrying the names.
+        let g = GoalIntent.intentGoal(for: "Continue telling me what you see, including apartment numbers and elevators; tell me when I approach my building's gym")
+        XCTAssertEqual(g?.kind, .describe)
+        XCTAssertEqual(g?.targets, ["apartment numbers", "elevators", "building's gym"],
+                       "targets: \(String(describing: g?.targets))")
+        // Plain narration keeps empty targets.
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep telling me what you see")?.targets, [])
+    }
+
+    func testTellMeAboutNamedThingIsOneShotQuestion() {
+        // Field log 03:16: "tell me about the bottle I'm holding"
+        // confused the model parser; it is a question about a named
+        // thing in view, answered from the current frame.
+        let g = GoalIntent.intentGoal(for: "Tell me about the bottle I'm holding")
+        XCTAssertEqual(g?.kind, .question)
+        XCTAssertEqual(g?.targets, ["bottle"], "targets: \(String(describing: g?.targets))")
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Tell me about this sign")?.kind, .question)
+    }
+
+    func testRefinementFloorAddsWatchTarget() {
+        // Field log 03:17: both the garbled and the correctly
+        // transcribed "…keep an eye out for (an) elevator" failed
+        // model refinement; the deterministic floor must apply them.
+        for text in ["While you were at it keep an eye out for an elevator",
+                     "Fire at it keep an eye out for elevator",
+                     "Also watch for the gym"] {
+            let patch = GoalPatch.deterministic(refinement: text)
+            XCTAssertFalse(patch.isEmpty, text)
+            XCTAssertTrue(patch.addTargets.contains(where: { $0.contains("elevator") || $0.contains("gym") }),
+                          "\(text) -> \(patch.addTargets)")
+        }
+    }
+
     func testDemoParserKeepsContinuingNarrationRunning() async throws {
         let g = try await DemoCloudClient().parseGoal("Continue telling me what is in front of this camera.")
         XCTAssertEqual(g.kind, .describe)
@@ -1064,6 +1099,39 @@ extension ProperDaveCoreTests {
                       "before refine: \(client.evaluatedVerbosity)")
         XCTAssertEqual(client.evaluatedVerbosity.last, .detailed,
                        "after refine: \(client.evaluatedVerbosity)")
+    }
+
+    final class DecliningRefineClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "declining"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .notable)
+        }
+        func refine(current: GoalContext, refinement: String) async throws -> GoalContext {
+            throw RefinementError.unparseable
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "not_relevant")
+        }
+    }
+
+    @MainActor
+    func testRefinementFallsBackToDeterministicFloor() async throws {
+        // Field log 03:17: the model parser declined "keep an eye
+        // out for an elevator" twice; the refinement must still land.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: DecliningRefineClient(), source: CyclingSceneSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.4))
+        session.refineGoal(text: "While you're at it, keep an eye out for an elevator")
+        try await Task.sleep(for: .seconds(0.5))
+        session.stop()
+        XCTAssertTrue(session.goal?.targets.contains("elevator") == true,
+                      "targets: \(String(describing: session.goal?.targets))")
+        XCTAssertTrue(log.events.contains {
+            $0.event == "goal_refined" && $0.detail.contains("deterministic floor")
+        }, "events: \(log.events.map(\.event))")
     }
 
     @MainActor
