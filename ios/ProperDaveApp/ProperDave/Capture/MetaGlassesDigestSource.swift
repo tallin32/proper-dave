@@ -36,10 +36,13 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
     private var extractor = DigestExtractor()
     private let frameDecoder = HEVCFrameDecoder()
     private var lastEmitted = Date.distantPast
+    private var cadenceInterval: TimeInterval = 2
     private var sequence = 0
     private var framesBySequence: [Int: Data] = [:]
 
     func imageData(for digest: FrameDigest) -> Data? { framesBySequence[digest.sequence] }
+
+    func setCadence(_ interval: TimeInterval) { cadenceInterval = interval }
 
     /// Session creation with the selector race worked around: specific
     /// device when one is visible, up to 5 attempts a second apart while
@@ -89,6 +92,7 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
     private var sawFirstFrame = false
 
     private func start(sessionID: UUID, interval: TimeInterval) async {
+        cadenceInterval = interval
         WearablesBootstrap.configureIfNeeded()
         let wearables = Wearables.shared
         onEvent?("glasses_registration_state", "\(wearables.registrationState)")
@@ -192,7 +196,7 @@ final class MetaGlassesDigestSource: DigestSource, @unchecked Sendable {
                 onEvent?("glasses_frames", "count=\(frameCount) droppedNoPixelBuffer=\(droppedFrames)")
             }
             let now = Date()
-            guard now.timeIntervalSince(lastEmitted) >= interval else { return }
+            guard now.timeIntervalSince(lastEmitted) >= self.cadenceInterval else { return }
             lastEmitted = now
             sequence += 1
             // Compressed hvc1 must be decompressed before Vision sees it

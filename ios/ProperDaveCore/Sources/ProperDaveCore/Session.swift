@@ -10,6 +10,10 @@ public protocol DigestSource: Sendable {
     var failureDetail: String? { get }
     func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest>
     func stop()
+    /// Adaptive cadence (requirement, not just an extension
+    /// default, so implementations actually receive it through
+    /// the existential — the refine() dispatch lesson).
+    func setCadence(_ interval: TimeInterval)
     /// JPEG frame corresponding to a digest, when the source can retain
     /// it. ESCALATE_FRAME exists to ask a model to look; sources that
     /// only produce digests return nil and the model is told so.
@@ -19,6 +23,10 @@ public protocol DigestSource: Sendable {
 public extension DigestSource {
     var failureDetail: String? { nil }
     func imageData(for digest: FrameDigest) -> Data? { nil }
+    /// Adaptive cadence: the session asks the source to emit faster
+    /// or slower as the observed rate of scene change dictates.
+    /// Sources that cannot retime simply ignore it.
+    func setCadence(_ interval: TimeInterval) {}
 }
 
 /// Scripted concourse walk for demos/tests. No camera, no glasses.
@@ -308,6 +316,23 @@ public final class SessionController: ObservableObject {
         // mid-goal refinement silently changed nothing (found while
         // building the conversation control plane).
         var liveGoal = goal
+        // Adaptive cadence: nobody should have to announce "I'm
+        // walking now". Describe wording already implies passing
+        // scenes, so it starts fast; thereafter the classifier's
+        // own change rate drives the interval — sustained rapid
+        // change holds the fast cadence, a static scene relaxes it
+        // and saves battery and model calls. Motion-coprocessor
+        // activity labels are deliberately NOT used: handheld, they
+        // cannot tell three steps from three hand tremors.
+        var cadence = interval
+        var recentChanges: [Double] = []
+        var lastCadenceSetAt = 0
+        if goal.kind == .describe, cadence > 1.0 {
+            cadence = 1.0
+            source.setCadence(cadence)
+            log.append(sessionID: sessionID, component: "capture", event: "cadence_changed",
+                       detail: "interval=\(cadence)s reason=describe wording implies passing scenes")
+        }
         // Connectivity episode state: which evaluator lost contact,
         // so a fallback's success cannot masquerade as restoration.
         var lostEvaluatorName: String?
@@ -413,6 +438,21 @@ public final class SessionController: ObservableObject {
                        detail: "#\(digest.sequence) \(decision.name) change=\(String(format: "%.2f", scores.change)) relevance=\(String(format: "%.2f", scores.relevance)) lum=\(digest.sceneChange.brightness >= 0 ? String(format: "%.2f", digest.sceneChange.brightness) : "n/a") src=\(digest.sourceID)")
             decisionTrail.append("#\(digest.sequence) \(decision.name)")
             if decisionTrail.count > 30 { decisionTrail.removeFirst() }
+            // Cadence control: read the observed change rate over
+            // the last few digests, adjust at most every 4 digests.
+            recentChanges.append(scores.change)
+            if recentChanges.count > 6 { recentChanges.removeFirst() }
+            if received >= 5, received - lastCadenceSetAt >= 4, !recentChanges.isEmpty {
+                let mean = recentChanges.reduce(0, +) / Double(recentChanges.count)
+                let target: TimeInterval? = mean >= 0.45 ? 0.75 : (mean <= 0.12 ? 3.0 : nil)
+                if let target, abs(target - cadence) > 0.01 {
+                    cadence = target
+                    lastCadenceSetAt = received
+                    source.setCadence(target)
+                    log.append(sessionID: sessionID, component: "capture", event: "cadence_changed",
+                               detail: "interval=\(target)s meanChange=\(String(format: "%.2f", mean))")
+                }
+            }
             window.append(digest)
             if window.count > 5 { window.removeFirst() }
             guard decision.isEscalation else { continue }

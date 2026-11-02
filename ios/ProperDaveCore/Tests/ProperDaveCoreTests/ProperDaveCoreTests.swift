@@ -1137,6 +1137,62 @@ extension ProperDaveCoreTests {
         }
     }
 
+    final class CadenceRecordingSource: DigestSource, @unchecked Sendable {
+        let sourceID = "cadence-probe"
+        private(set) var cadences: [TimeInterval] = []
+        let labels: [String]
+        let pixel: Double
+        init(labels: [String], pixel: Double) { self.labels = labels; self.pixel = pixel }
+        func setCadence(_ interval: TimeInterval) { cadences.append(interval) }
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        // Fresh topics per digest when cycling fast:
+                        // repeated topics would die on dedupe before
+                        // cadence ever adapts.
+                        let frameLabels = pixel > 0.5
+                            ? ["place\(sequence)", "view\(sequence)", "thing\(sequence)"]
+                            : labels
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: frameLabels.map { ScoredLabel(name: $0, confidence: 0.9) },
+                            sceneChange: ChangeMetrics(pixelDiff: pixel)))
+                        try? await Task.sleep(for: .milliseconds(30))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    @MainActor
+    func testCadenceSpeedsUpUnderSustainedChange() async throws {
+        let source = CadenceRecordingSource(labels: [], pixel: 1.0)
+        let session = SessionController(log: EventLog())
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: source,
+                      interval: 2, cooldown: 0)
+        try await Task.sleep(for: .seconds(1.0))
+        session.stop()
+        XCTAssertTrue(source.cadences.contains(0.75), "cadences: \(source.cadences)")
+    }
+
+    @MainActor
+    func testCadenceRelaxesWhenSceneIsStatic() async throws {
+        let source = CadenceRecordingSource(labels: ["laptop"], pixel: 0.0)
+        let session = SessionController(log: EventLog())
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: SilentDescribeClient(), source: source,
+                      interval: 2, cooldown: 0)
+        try await Task.sleep(for: .seconds(1.0))
+        session.stop()
+        XCTAssertTrue(source.cadences.contains(3.0), "cadences: \(source.cadences)")
+    }
+
     @MainActor
     func testFrameTapDeliversDigestImages() async throws {
         let session = SessionController(log: EventLog())
