@@ -30,7 +30,26 @@ final class Speaker: NSObject, ObservableObject {
     var ratePercent = 100
     var pitch: Float = 1.0
 
+    /// Speech cannot leave the device in a record-only audio
+    /// session category (dictation sets .record; an early return or
+    /// a race could leave it there). Ensure playback before every
+    /// utterance — cheap when already correct, decisive when not.
+    private func ensurePlaybackSession() {
+        let session = AVAudioSession.sharedInstance()
+        if session.category != .playback, session.category != .playAndRecord {
+            try? session.setCategory(.playback, mode: .spokenAudio,
+                                     options: [.allowBluetoothA2DP])
+        }
+        // Activation is not implied by a correct category: dictation
+        // deactivates the session on stop, and a deactivated session
+        // swallows synthesis even in .playback (field report: audio
+        // never returned after tapping Stop). Activating is cheap
+        // and idempotent, so do it unconditionally.
+        try? session.setActive(true)
+    }
+
     func speak(_ text: String) {
+        ensurePlaybackSession()
         let utterance = AVSpeechUtterance(string: text)
         let scaled = AVSpeechUtteranceDefaultSpeechRate * Float(ratePercent) / 100
         utterance.rate = min(max(scaled, AVSpeechUtteranceMinimumSpeechRate),

@@ -38,9 +38,21 @@ struct ConversationView: View {
                 Divider()
                 HStack {
                     Button {
+                        // Talk -> Stop -> sent. In conversation a
+                        // dictated turn is a turn: stopping dictation
+                        // with a transcript sends it immediately,
+                        // rather than staging it for a separate Send
+                        // (field report: the three-tap flow was a
+                        // kludge). Typed text still uses Send, and
+                        // the Home goal field still fills for review.
+                        let wasListening = dictation.isListening
                         dictation.toggle()
-                        if !dictation.isListening && !dictation.transcript.isEmpty {
-                            input = dictation.transcript
+                        if wasListening {
+                            let text = dictation.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !text.isEmpty {
+                                input = text
+                                send()
+                            }
                         }
                     } label: {
                         Label(dictation.isListening ? "Stop" : "Talk",
