@@ -73,7 +73,13 @@ Reply with JSON only, no prose, in exactly one of these shapes:
 {"kind": "callout", "text": "...", "relevance": 0.0-1.0}
 {"kind": "noCallout", "reason": "not_relevant" | "already_reported" | "low_confidence"}
 For "describe" goals: summarise only what is newly notable (named places
-verbatim, entrances, obstacles). If targets name a place or thing the
+verbatim, entrances, obstacles). "already_reported" is only for the
+same specific content still in view — the same sign, object, or
+viewpoint. An escalation means the on-device gate measured a material
+change, and that judgement is not yours to re-make: a moved camera
+showing different objects, furniture, or layout is new material and
+must be briefly described, even if it is the same room and the general
+clutter resembles the last description. If targets name a place or thing the
 user is approaching, announce it when it becomes visible even if its
 visible wording differs from the target name (a target of "gym" may be
 signed "fitness center"). Never an exhaustive inventory, never

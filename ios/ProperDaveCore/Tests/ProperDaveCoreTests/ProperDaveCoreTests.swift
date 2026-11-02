@@ -333,6 +333,20 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(prompt.contains("DIRECT QUESTION"))
         XCTAssertTrue(prompt.contains("does NOT apply"))
     }
+    func testDescribePromptTreatsNewViewAsNewMaterial() {
+        // Field log 04:11: panning across one cluttered room, the
+        // model answered already_reported to nearly every
+        // escalation. A different view of the same room is new
+        // material, not a repeat.
+        let goal = GoalContext(rawText: "Tell me what I see as I pass",
+                               targets: [], kind: .describe, verbosity: .detailed)
+        let request = EscalationRequest(sessionID: UUID(), goal: goal,
+                                        digest: digest(labels: ["desk"], pixel: 0.9),
+                                        recentDigests: [], lastCallout: "Cluttered corner by a window.")
+        let prompt = LocalModelPrompt.escalation(request)
+        XCTAssertTrue(prompt.contains("different view of the same room is new material"),
+                      prompt)
+    }
     func testWatchPromptKeepsSilencePreference() {
         let goal = GoalContext(rawText: "find gate B62", targets: ["Gate B62"])
         let request = EscalationRequest(sessionID: UUID(), goal: goal,
