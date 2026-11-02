@@ -464,6 +464,10 @@ final class AppModel: ObservableObject {
                 }
                 speechRatePercent = min(200, max(50, speechRatePercent + delta))
                 return "Okay — speaking at \(speechRatePercent) percent of the system rate."
+            case .endConversation:
+                // The view intercepts this to dismiss; reaching
+                // here still answers honestly.
+                return "Conversation ended."
             case .status:
                 return session.statusSummary()
             case .stop:

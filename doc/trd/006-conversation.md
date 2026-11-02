@@ -105,6 +105,30 @@ concept in other tools is addressee detection, and this state is it.
   necessarily a representative speech-settings user; validate
   defaults against a broader range of blind users.
 
+- **CONV-13** Known limitation: dictation accuracy. Dictation
+  uses `SFSpeechRecognizer` with stock settings — no vocabulary
+  biasing, no punctuation — and it mis-hears idiomatic speech
+  (field log 2026-11-01 03:17: "while you're at it" arrived as
+  "fire at it", and a refinement failed twice before landing).
+  This is a limitation of the recognizer, not of the user's
+  speech, and no recognizer fixes a truck idling in front of the
+  user — which is why typed input is first-class (CONV doctrine)
+  and why parsing is defended in depth: deterministic intent and
+  refinement floors tolerate filler and garble, and a failed
+  parse says so honestly rather than guessing. Planned fixes, in
+  order: (1) bias the recognizer with `contextualStrings` seeded
+  from the running goal's targets plus Dave's command vocabulary,
+  enable punctuation, and retry alternate transcriptions when
+  the best one fails to parse; (2) post-hackathon, evaluate
+  Apple's `SpeechTranscriber` (iOS 26, on-device) against
+  WhisperKit using field dictations as the corpus; (3) a
+  server-side transcription tier behind the existing API seam is
+  possible but must never be the only path, since it fails
+  exactly when connectivity does. Microphone route matters as
+  much as engine: Bluetooth HFP audio is narrowband and degrades
+  every recognizer, which is why the `dictation_input` log event
+  records the active route.
+
 ## 4a. Control plane (implemented 2026-11-01)
 
 Conversation is the session's control surface, not just a chat

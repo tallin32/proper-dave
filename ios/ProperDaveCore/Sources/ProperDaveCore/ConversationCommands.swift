@@ -19,6 +19,7 @@ public enum ConversationCommand: Equatable, Sendable {
     case landmarksOnly
     case speakFaster
     case speakSlower
+    case endConversation
 
     private static let table: [(ConversationCommand, Set<String>)] = [
         (.status, ["what are you doing", "what are you doing right now",
@@ -48,6 +49,11 @@ public enum ConversationCommand: Equatable, Sendable {
         (.speakSlower, ["speak slower", "talk slower", "decrease rate",
                         "decrease the rate", "slow down", "slower",
                         "speak more slowly", "talk more slowly"]),
+        (.endConversation, ["end conversation", "stop conversation",
+                            "close conversation", "exit conversation",
+                            "leave conversation", "goodbye", "good bye",
+                            "bye", "that's all", "that is all",
+                            "i'm done", "im done", "we're done"]),
     ]
 
     public static func parse(_ rawText: String) -> ConversationCommand? {
@@ -79,7 +85,8 @@ public enum ConversationCommand: Equatable, Sendable {
             case .detailed: return GoalPatch(verbosity: .notable)
             case .notable, .landmarks: return current == .landmarks ? nil : GoalPatch(verbosity: .landmarks)
             }
-        case .status, .stop, .repeatLast, .speakFaster, .speakSlower:
+        case .status, .stop, .repeatLast, .speakFaster, .speakSlower,
+             .endConversation:
             return nil
         }
     }
