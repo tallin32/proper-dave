@@ -47,6 +47,14 @@ def escalation(image=None):
         "recentDigests": [], "image": image})
 
 
+def test_evaluate_prompt_treats_new_view_as_new_material():
+    # Field log 04:11: already_reported must mean same specific
+    # content still in view, not "same room as last description".
+    from proper_dave.model_backends import EVALUATE_SYSTEM
+    assert "same specific content still in view" in EVALUATE_SYSTEM
+    assert "not yours to re-make" in EVALUATE_SYSTEM
+
+
 def test_parse_goal_structured():
     client = make_client(reply({
         "targets": ["Gate B62"], "exclusions": ["B40"],
