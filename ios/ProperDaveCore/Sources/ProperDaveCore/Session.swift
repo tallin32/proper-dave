@@ -84,6 +84,14 @@ public final class SessionController: ObservableObject {
     @Published public private(set) var decisionTrail: [String] = []
     @Published public private(set) var escalationCount = 0
     @Published public private(set) var activeSourceID: String?
+    /// A low-light offer is outstanding: Dave has asked "want me to
+    /// keep trying my best in this light?" and a yes/no answer will
+    /// be routed to respondToLowLightOffer. Asked once per goal.
+    @Published public private(set) var lowLightOfferPending = false
+    /// User accepted the low-light offer: the loop escalates
+    /// periodically even when the gate would suppress, so the model
+    /// does the best it can in the dark (owner request 2026-11-02).
+    private var lowLightBestEffort = false
 
     public var onCallout: ((String) -> Void)?
     public var onCriticalError: ((String, String) -> Void)?
@@ -153,6 +161,7 @@ public final class SessionController: ObservableObject {
         state = .starting
         lastCallout = nil; decisionTrail = []; escalationCount = 0
         reportedLandmarks = []; announcedTopics = []; window = []; lastEscalationAt = nil
+        lowLightOfferPending = false; lowLightBestEffort = false
         log.append(sessionID: sessionID, component: "session", event: "goal_start_requested", detail: goalText)
         task = Task { [weak self] in
             guard let self else { return }
@@ -310,6 +319,7 @@ public final class SessionController: ObservableObject {
         // and actionable report for this product's users — checks
         // have failed to deposit for want of exactly this sentence.
         var lowLightAnnounced = false
+        var lastBestEffortEscalation: Date?
         func announceLowLightIfNeeded(_ digest: FrameDigest) {
             let lum = digest.sceneChange.brightness
             guard !lowLightAnnounced, lum >= 0, lum < 0.12 else { return }
@@ -317,7 +327,13 @@ public final class SessionController: ObservableObject {
             log.append(sessionID: sessionID, component: "session", event: "low_light_diagnostic",
                        detail: "brightness=\(String(format: "%.3f", lum))")
             if !Task.isCancelled {
-                onNotice?("It's quite dark here, so I may be missing things. More light would help me see.")
+                // Ask, don't just announce: the user may prefer
+                // best-effort in the dark over waiting for light
+                // (owner request 2026-11-02). The answer arrives
+                // via conversation or the refinement field and is
+                // routed to respondToLowLightOffer.
+                lowLightOfferPending = true
+                onNotice?("It's quite dark here, so I may be missing things. Want me to keep trying my best in this light? Say yes, or add more light.")
             }
         }
         // The running loop must see refinements: refineGoal() and
@@ -440,7 +456,7 @@ public final class SessionController: ObservableObject {
                 }
             }
             let since = lastEscalationAt.map { Date().timeIntervalSince($0) }
-            let (decision, scores) = Classifier.evaluate(
+            var (decision, scores) = Classifier.evaluate(
                 digest: digest, window: window, goal: goal, lastCallout: lastCallout,
                 secondsSinceEscalation: since, reportedLandmarks: reportedLandmarks,
                 announcedTopics: announcedTopics, cooldown: cooldown)
@@ -462,6 +478,19 @@ public final class SessionController: ObservableObject {
                     log.append(sessionID: sessionID, component: "capture", event: "cadence_changed",
                                detail: "interval=\(target)s meanChange=\(String(format: "%.2f", mean))")
                 }
+            }
+            // Best-effort in the dark (user accepted the low-light
+            // offer): escalate periodically even when the gate
+            // suppresses, so the model gets its chance to do the
+            // best it can. Rate-limited so a dark room cannot storm
+            // the model; logged distinctly for field diagnosis.
+            if lowLightBestEffort, !decision.isEscalation,
+               digest.sceneChange.brightness >= 0, digest.sceneChange.brightness < 0.12,
+               lastBestEffortEscalation.map({ Date().timeIntervalSince($0) >= 15 }) ?? true {
+                lastBestEffortEscalation = Date()
+                log.append(sessionID: sessionID, component: "session", event: "low_light_best_effort",
+                           detail: "escalating despite \(decision.name)")
+                decision = .escalateDigest(confidence: 0.5, landmark: nil)
             }
             window.append(digest)
             if window.count > 5 { window.removeFirst() }
@@ -701,6 +730,25 @@ public final class SessionController: ObservableObject {
         currentSource?.stop(); currentSource = nil
         if state != .idle { log.append(sessionID: sessionID, component: "session", event: "goal_ended") }
         activeSourceID = nil
+        lowLightOfferPending = false
         state = confirm ? .ended : .idle
+    }
+
+    /// Answer the low-light offer. Returns the confirmation to
+    /// speak, or nil when no offer is outstanding. Accepting sets
+    /// best-effort mode: the loop escalates periodically in the
+    /// dark even when the gate would suppress, and the model does
+    /// the best it can — the sighted-person behaviour of pressing
+    /// on rather than declaring the room unreadable.
+    @discardableResult
+    public func respondToLowLightOffer(accepted: Bool) -> String? {
+        guard lowLightOfferPending else { return nil }
+        lowLightOfferPending = false
+        if accepted { lowLightBestEffort = true }
+        log.append(sessionID: sessionID, component: "session", event: "low_light_offer_answered",
+                   detail: accepted ? "accepted" : "declined")
+        return accepted
+            ? "Okay — I'll do my best in this light. More light would still help."
+            : "Okay — I'll keep watching as usual. More light would help me see."
     }
 }
