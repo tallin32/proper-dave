@@ -20,6 +20,10 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
 
     func imageData(for digest: FrameDigest) -> Data? { framesBySequence[digest.sequence] }
 
+    func setCadence(_ interval: TimeInterval) {
+        queue.async { [weak self] in self?.interval = interval }
+    }
+
     func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
         self.sessionID = sessionID
         self.interval = interval
