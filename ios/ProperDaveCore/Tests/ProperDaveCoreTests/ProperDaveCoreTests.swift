@@ -3,12 +3,13 @@ import XCTest
 
 final class ProperDaveCoreTests: XCTestCase {
     private var seq = 0
-    private func digest(labels: [String] = [], ocr: [String] = [], pixel: Double = 0) -> FrameDigest {
+    private func digest(labels: [String] = [], ocr: [String] = [], pixel: Double = 0,
+                        brightness: Double = -1) -> FrameDigest {
         seq += 1
         return FrameDigest(sessionID: UUID(), sequence: seq, sourceID: "test",
                            labels: labels.map { ScoredLabel(name: $0, confidence: 0.9) },
                            ocrText: ocr.map { OCRSpan(text: $0, confidence: 0.9) },
-                           sceneChange: ChangeMetrics(pixelDiff: pixel))
+                           sceneChange: ChangeMetrics(pixelDiff: pixel, brightness: brightness))
     }
 
     func testStaticSceneIsSilent() {
@@ -283,6 +284,22 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(d.isEscalation)
     }
 
+    func testDescribeBrightnessSwingBypassesCooldown() {
+        // Field log 00:25: a "how well lit" goal's dimming events
+        // died under the cooldown; lights changing produces no new
+        // labels and zero saliency, so brightness must bypass both.
+        let window = [digest(labels: ["room"], pixel: 0.1, brightness: 0.65)]
+        let (d, _) = Classifier.evaluate(digest: digest(labels: ["room"], pixel: 0.1, brightness: 0.12),
+                                         window: window, goal: dgoal(verbosity: .detailed),
+                                         secondsSinceEscalation: 5)
+        XCTAssertTrue(d.isEscalation, "\(d)")
+        if case .escalateFrame = d {} else { XCTFail("expected frame escalation, got \(d)") }
+        let (small, _) = Classifier.evaluate(digest: digest(labels: ["room"], pixel: 0.1, brightness: 0.55),
+                                             window: window, goal: dgoal(verbosity: .detailed),
+                                             secondsSinceEscalation: 5)
+        XCTAssertFalse(small.isEscalation, "\(small)")
+    }
+
     final class AnswerClient: CloudModelClient, @unchecked Sendable {
         var modelName = "answer"
         func parseGoal(_ rawText: String) async throws -> GoalContext {
@@ -517,6 +534,53 @@ extension ProperDaveCoreTests {
         try await Task.sleep(for: .seconds(0.8))
         session.stop()
         XCTAssertEqual(spoken, ["laptop in view."], "spoken: \(spoken)")
+    }
+
+    final class LowLightSource: DigestSource, @unchecked Sendable {
+        let sourceID = "low-light"
+        func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
+            AsyncStream { continuation in
+                Task {
+                    var sequence = 0
+                    while !Task.isCancelled {
+                        sequence += 1
+                        continuation.yield(FrameDigest(
+                            sessionID: sessionID, sequence: sequence, sourceID: sourceID,
+                            labels: [ScoredLabel(name: "door", confidence: 0.9)],
+                            sceneChange: ChangeMetrics(pixelDiff: 0.1, brightness: 0.05)))
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    continuation.finish()
+                }
+            }
+        }
+        func stop() {}
+    }
+
+    final class EmptyWatchClient: CloudModelClient, @unchecked Sendable {
+        var modelName = "empty-watch"
+        func parseGoal(_ rawText: String) async throws -> GoalContext {
+            GoalContext(rawText: rawText, targets: ["elevator"])
+        }
+        func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
+            .noCallout(reason: "not_relevant")
+        }
+    }
+
+    @MainActor
+    func testLowLightDiagnosticSaidOnce() async throws {
+        let log = EventLog()
+        let session = SessionController(log: log)
+        var notices: [String] = []
+        session.onNotice = { notices.append($0) }
+        session.start(goalText: "Watch for the elevator",
+                      client: EmptyWatchClient(), source: LowLightSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        session.stop()
+        XCTAssertEqual(notices, ["It's quite dark here, so I may be missing things. More light would help me see."],
+                       "notices: \(notices)")
+        XCTAssertTrue(log.events.contains { $0.event == "low_light_diagnostic" })
     }
 
     @MainActor

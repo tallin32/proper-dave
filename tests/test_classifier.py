@@ -11,7 +11,7 @@ SESSION = uuid4()
 n = 0
 
 
-def digest(labels=(), ocr=(), pixel=0.0):
+def digest(labels=(), ocr=(), pixel=0.0, brightness=-1.0):
     global n
     n += 1
     return FrameDigest(
@@ -19,7 +19,7 @@ def digest(labels=(), ocr=(), pixel=0.0):
         sourceID="test",
         labels=[{"name": x, "confidence": 0.9} for x in labels],
         ocrText=[{"text": x, "confidence": 0.9} for x in ocr],
-        sceneChange={"pixelDiff": pixel, "labelDelta": 0.0},
+        sceneChange={"pixelDiff": pixel, "labelDelta": 0.0, "brightness": brightness},
     )
 
 
@@ -103,6 +103,23 @@ def test_describe_landmarks_verbosity_is_stricter():
     d = evaluate(digest(ocr=["Bakery"], pixel=0.6),
                  [digest(ocr=["Street"])], dgoal(verbosity="landmarks"))
     assert (d.kind, d.reason) == ("suppress", "notSalient")
+
+
+def test_describe_brightness_swing_bypasses_cooldown():
+    # Field log 00:25: a "how well lit" goal's dimming events
+    # (change 0.62-0.75) died under the cooldown. Lights going off
+    # produces no new labels; brightness is the signal.
+    d = evaluate(digest(labels=["room"], brightness=0.12),
+                 [digest(labels=["room"], brightness=0.65)],
+                 dgoal(verbosity="detailed"), since_escalation=5)
+    assert d.kind == "escalateFrame"
+
+
+def test_describe_small_brightness_change_stays_quiet():
+    d = evaluate(digest(labels=["room"], brightness=0.55),
+                 [digest(labels=["room"], brightness=0.65)],
+                 dgoal(verbosity="detailed"), since_escalation=5)
+    assert (d.kind, d.reason) == ("suppress", "cooldown")
 
 
 def test_fake_parser_classifies_describe():

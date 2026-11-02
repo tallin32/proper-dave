@@ -18,8 +18,18 @@ public struct OCRSpan: Codable, Equatable, Sendable {
 public struct ChangeMetrics: Codable, Equatable, Sendable {
     public var pixelDiff: Double
     public var labelDelta: Double
-    public init(pixelDiff: Double = 0, labelDelta: Double = 0) {
-        self.pixelDiff = pixelDiff; self.labelDelta = labelDelta
+    /// Mean frame luminance, 0 (black) to 1 (white); -1 when the
+    /// source did not measure it (old payloads, scripted sources).
+    public var brightness: Double
+    public init(pixelDiff: Double = 0, labelDelta: Double = 0, brightness: Double = -1) {
+        self.pixelDiff = pixelDiff; self.labelDelta = labelDelta; self.brightness = brightness
+    }
+    private enum CodingKeys: String, CodingKey { case pixelDiff, labelDelta, brightness }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pixelDiff = try c.decodeIfPresent(Double.self, forKey: .pixelDiff) ?? 0
+        labelDelta = try c.decodeIfPresent(Double.self, forKey: .labelDelta) ?? 0
+        brightness = try c.decodeIfPresent(Double.self, forKey: .brightness) ?? -1
     }
 }
 

@@ -30,6 +30,9 @@ class OCRSpan(Wire):
 class ChangeMetrics(Wire):
     pixel_diff: float = Field(default=0.0, alias="pixelDiff")
     label_delta: float = Field(default=0.0, alias="labelDelta")
+    # Mean frame luminance 0..1; -1 when the source did not measure
+    # it (old payloads, scripted sources).
+    brightness: float = Field(default=-1.0, alias="brightness")
 
 
 class FrameDigest(Wire):

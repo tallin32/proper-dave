@@ -126,6 +126,17 @@ def evaluate(digest, window, goal, *, last_callout=None, since_escalation=None,
         return Decision("suppress", "classifierError")
 
 
+def brightness_delta(digest, window) -> float:
+    """Largest luminance swing vs the window; mirrors Classifier.swift.
+    -1 (unmeasured) on either side means no signal, never a delta."""
+    now = digest.scene_change.brightness
+    if now < 0:
+        return 0.0
+    deltas = [abs(now - past.scene_change.brightness)
+              for past in window if past.scene_change.brightness >= 0]
+    return max(deltas) if deltas else 0.0
+
+
 def _is_scene_change_goal(goal) -> bool:
     words: set[str] = set()
     for phrase in list(goal.targets) + [goal.raw_text]:
@@ -190,6 +201,13 @@ def _run(digest, window, goal, last_callout, since, reported, announced, cooldow
             # (labels scoring ~0.3) is silent forever.
             kind = "escalateDigest" if topics else "escalateFrame"
             return Decision(kind, confidence=max(sal, 0.5), **kw)
+        # A large brightness swing bypasses cooldown and saliency
+        # (mirrors Classifier.swift; field log 00:25).
+        b_delta = brightness_delta(digest, window)
+        if b_delta >= 0.30:
+            lit = dict(change=max(change, min(1.0, b_delta / 0.35)),
+                       relevance=max(sal, 0.6), saliency=sal, topics=topics)
+            return Decision("escalateFrame", confidence=max(sal, 0.6), **lit)
         if since is not None and since < cooldown_s and change < MAJOR_CHANGE:
             return Decision("suppress", "cooldown", **kw)
         if gained and not (gained - set(announced)):

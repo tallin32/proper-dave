@@ -286,6 +286,22 @@ public final class SessionController: ObservableObject {
         var received = 0
         var describeBaselineAttempted = false
         var modelBackoffUntil: Date?
+        // Low-light diagnostic: said once per goal, only when the
+        // model came back empty-handed in a measurably dark scene.
+        // "It is too dark to get meaningful information" is a valid
+        // and actionable report for this product's users — checks
+        // have failed to deposit for want of exactly this sentence.
+        var lowLightAnnounced = false
+        func announceLowLightIfNeeded(_ digest: FrameDigest) {
+            let lum = digest.sceneChange.brightness
+            guard !lowLightAnnounced, lum >= 0, lum < 0.12 else { return }
+            lowLightAnnounced = true
+            log.append(sessionID: sessionID, component: "session", event: "low_light_diagnostic",
+                       detail: "brightness=\(String(format: "%.3f", lum))")
+            if !Task.isCancelled {
+                onNotice?("It's quite dark here, so I may be missing things. More light would help me see.")
+            }
+        }
         // The running loop must see refinements: refineGoal() and
         // applyPatch() replace the published goal, but this loop used
         // to keep judging against the goal captured at start, so a
@@ -347,7 +363,16 @@ public final class SessionController: ObservableObject {
                         }
                     case .noCallout(let reason):
                         log.append(sessionID: sessionID, component: "cloud", event: "no_callout", detail: reason)
-                        if !Task.isCancelled { onNotice?("I couldn't tell what's there from this view.") }
+                        if !Task.isCancelled {
+                            if digest.sceneChange.brightness >= 0, digest.sceneChange.brightness < 0.12 {
+                                lowLightAnnounced = true
+                                log.append(sessionID: sessionID, component: "session", event: "low_light_diagnostic",
+                                           detail: "brightness=\(String(format: "%.3f", digest.sceneChange.brightness))")
+                                onNotice?("It's too dark to make anything out from this view. More light would help.")
+                            } else {
+                                onNotice?("I couldn't tell what's there from this view.")
+                            }
+                        }
                     }
                 } catch {
                     log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
@@ -385,7 +410,7 @@ public final class SessionController: ObservableObject {
                 secondsSinceEscalation: since, reportedLandmarks: reportedLandmarks,
                 announcedTopics: announcedTopics, cooldown: cooldown)
             log.append(sessionID: sessionID, component: "classifier", event: "decision",
-                       detail: "#\(digest.sequence) \(decision.name) change=\(String(format: "%.2f", scores.change)) relevance=\(String(format: "%.2f", scores.relevance)) src=\(digest.sourceID)")
+                       detail: "#\(digest.sequence) \(decision.name) change=\(String(format: "%.2f", scores.change)) relevance=\(String(format: "%.2f", scores.relevance)) lum=\(digest.sceneChange.brightness >= 0 ? String(format: "%.2f", digest.sceneChange.brightness) : "n/a") src=\(digest.sourceID)")
             decisionTrail.append("#\(digest.sequence) \(decision.name)")
             if decisionTrail.count > 30 { decisionTrail.removeFirst() }
             window.append(digest)
@@ -508,6 +533,9 @@ public final class SessionController: ObservableObject {
                     }
                 } else if isDescribeBaseline {
                     speakDescribeBaselineFallback()
+                }
+                if reason != "model_unavailable" && reason != "rate_limited" && reason != "too_soon" {
+                    announceLowLightIfNeeded(digest)
                 }
             case .failure(let error):
                 log.append(sessionID: sessionID, component: "cloud", event: "model_error", detail: error.localizedDescription)
