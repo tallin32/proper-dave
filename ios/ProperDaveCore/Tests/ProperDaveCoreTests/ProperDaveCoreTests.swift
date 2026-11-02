@@ -667,6 +667,12 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(GoalIntent.intentGoal(for: "Continue telling me what is in front of this camera.")?.kind, .describe)
         XCTAssertEqual(GoalIntent.intentGoal(for: "Keep telling me what you see")?.kind, .describe)
         XCTAssertNil(GoalIntent.questionGoal(for: "Continue telling me what is in front of this camera."))
+        // Field log 04:19: "keep watching the camera and tell me
+        // what you see" was misread as a one-shot question; the
+        // goal answered once and ended while the user kept waving
+        // the phone. "Keep watching" is continuing intent.
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep watching the camera and tell me what you see.")?.kind, .describe)
+        XCTAssertEqual(GoalIntent.intentGoal(for: "Keep an eye out and tell me what you see")?.kind, .describe)
     }
 
     func testCompoundGoalRetainsWatchTargets() {

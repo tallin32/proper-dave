@@ -165,6 +165,9 @@ public enum GoalIntent {
                                            "keep telling", "keep describing", "keep me posted",
                                            "keep me updated", "continue telling",
                                            "continue describing", "continue to tell",
+                                           "keep watching", "keep looking",
+                                           "continue watching", "continue looking",
+                                           "keep an eye",
                                            "continuously"]
     /// Scene-change narration ("keep letting me know when the
     /// scene changes") is a describe goal even though it contains

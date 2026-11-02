@@ -12,6 +12,8 @@ def test_fake_prefilters_scene_interest_question():
 def test_fake_distinguishes_continuing_from_one_shot():
     assert FakeCloudModel().parse_goal("Continue telling me what is in front of this camera.").kind == "describe"
     assert FakeCloudModel().parse_goal("What is currently in front of this camera?").kind == "question"
+    # Field log 04:19: "keep watching" is continuing intent, not a one-shot.
+    assert FakeCloudModel().parse_goal("Keep watching the camera and tell me what you see.").kind == "describe"
 
 
 def test_fake_scene_change_narration_is_describe():
