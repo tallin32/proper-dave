@@ -111,6 +111,97 @@ final class AppModel: ObservableObject {
             }
         }
     }
+    /// Recorded sessions for replay (developer feature): when on,
+    /// every goal's digests + frames are saved as a bundle so the
+    /// walk can be replayed through the current classifier later
+    /// ("should have reported X, reports Y — twist the knobs, same
+    /// data"). On-device only, last 10 kept; bundles leave the phone
+    /// solely via the manual dev-server send in the Log tab.
+    @Published var sessionRecordingEnabled: Bool {
+        didSet { save(sessionRecordingEnabled, "sessionRecordingEnabled") }
+    }
+    static var recordingsBase: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("RecordedSessions", isDirectory: true)
+    }
+    let sessionRecorder = SessionRecorder(base: AppModel.recordingsBase)
+    @Published private(set) var recordedSessions: [RecordedSessionMeta] = []
+    @Published private(set) var sendingSessionID: UUID?
+
+    func refreshRecordedSessions() {
+        recordedSessions = RecordedSessionStore.summaries(base: Self.recordingsBase)
+    }
+
+    func replayRecordedSession(_ meta: RecordedSessionMeta) {
+        switch session.state {
+        case .idle, .ended: break
+        default:
+            if case .failed = session.state { break }
+            return
+        }
+        let digests = RecordedSessionStore.loadDigests(base: Self.recordingsBase, id: meta.id)
+        guard !digests.isEmpty else {
+            speaker.speak("That recording has no frames to replay.")
+            return
+        }
+        let client = RecordedAnswersClient(meta: meta)
+        let source = ReplayDigestSource(digests: digests) {
+            RecordedSessionStore.frameData(base: Self.recordingsBase, meta: meta, digest: $0)
+        }
+        log.append(component: "session", event: "replay_started",
+                   detail: "\(meta.goalText) (\(digests.count) digests)")
+        session.start(goalText: meta.goalText, parser: client, evaluator: client,
+                      source: source, interval: 0.3, cooldown: Classifier.defaultCooldown)
+        speaker.speak("Replaying. \(meta.goalText)")
+    }
+
+    func deleteRecordedSession(_ meta: RecordedSessionMeta) {
+        RecordedSessionStore.delete(base: Self.recordingsBase, id: meta.id)
+        refreshRecordedSessions()
+    }
+
+    /// Dev-server upload: every file of the bundle, one raw POST
+    /// each, so the workstation (and the agent) can analyze the
+    /// actual JPGs. Manual, per session, Developer Mode only.
+    func sendRecordedSession(_ meta: RecordedSessionMeta) {
+        guard sendingSessionID == nil else { return }
+        sendingSessionID = meta.id
+        Task { [weak self] in
+            guard let self else { return }
+            let dir = RecordedSessionStore.directory(base: Self.recordingsBase, id: meta.id)
+            let files = (FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?
+                .compactMap { $0 as? URL } ?? [])
+                .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+                .sorted { $0.path < $1.path }
+            var sent = 0
+            do {
+                for file in files {
+                    let rel = file.path.replacingOccurrences(of: dir.path + "/", with: "")
+                    guard let url = URL(string: "http://\(serverHost):\(serverPort)/v1/dev/sessions/\(meta.id.uuidString)/files/\(rel)") else { continue }
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                    if !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+                    request.httpBody = try Data(contentsOf: file)
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        throw CloudError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1, rel)
+                    }
+                    sent += 1
+                }
+                log.append(component: "session", event: "session_sent_to_server",
+                           detail: "\(meta.id) files=\(sent)")
+                speaker.speak("Session sent. \(sent) files.")
+            } catch {
+                log.append(component: "session", event: "session_send_failed",
+                           detail: "\(meta.id) \(error.localizedDescription)")
+                speaker.speak("Could not send the session. \(error.localizedDescription)")
+            }
+            sendingSessionID = nil
+            refreshRecordedSessions()
+        }
+    }
+
     let modelPacks = ModelPackManager()
     @Published var sourceKind: FrameSourceKind {
         didSet {
@@ -208,6 +299,7 @@ final class AppModel: ObservableObject {
         speechRatePercent = d.integer(forKey: "speechRatePercent") == 0 ? 100 : d.integer(forKey: "speechRatePercent")
         speechPitch = d.double(forKey: "speechPitch") == 0 ? 1.0 : d.double(forKey: "speechPitch")
         povRecordingEnabled = d.bool(forKey: "povRecordingEnabled")
+        sessionRecordingEnabled = d.bool(forKey: "sessionRecordingEnabled")
         sourceKind = FrameSourceKind(rawValue: d.string(forKey: "sourceKind") ?? "") ?? .mock
         serverHost = d.string(forKey: "serverHost") ?? ""
         serverPort = d.integer(forKey: "serverPort") == 0 ? 3283 : d.integer(forKey: "serverPort")
@@ -236,8 +328,19 @@ final class AppModel: ObservableObject {
         session.onCallout = { [weak self] text in self?.speaker.speak(text) }
         session.onNotice = { [weak self] text in self?.speaker.speak(text) }
         session.onFrame = { [weak self] digest, data in
-            guard let self, self.povRecordingEnabled, let data else { return }
-            self.povRecorder.record(jpeg: data, at: digest.capturedAt)
+            guard let self else { return }
+            if self.povRecordingEnabled, let data {
+                self.povRecorder.record(jpeg: data, at: digest.capturedAt)
+            }
+            // Replay must not record itself, or bundles nest.
+            if self.sessionRecordingEnabled, digest.sourceID != "replay" {
+                if self.sessionRecorder.activeSessionID != digest.sessionID {
+                    self.sessionRecorder.begin(sessionID: digest.sessionID,
+                                               goalText: self.session.goal?.rawText ?? "",
+                                               sourceID: digest.sourceID)
+                }
+                self.sessionRecorder.record(digest: digest, jpeg: data)
+            }
         }
         session.onConnectivityLost = { [weak self] in self?.handleConnectivityLoss() }
         session.onConnectivityRestored = { [weak self] in self?.handleConnectivityRestored() }
@@ -260,9 +363,19 @@ final class AppModel: ObservableObject {
         }
         motionProbe.start()
         refreshGlassesState()
+        refreshRecordedSessions()
         // $state emits the incoming value before the stored property
         // changes, so the new state must be passed through, not re-read.
-        stateSink = session.$state.sink { [weak self] state in self?.applyHeartbeat(state: state) }
+        stateSink = session.$state.sink { [weak self] state in
+            self?.applyHeartbeat(state: state)
+            // A goal that ends on its own (or is replaced) still
+            // closes its recording bundle with its log slice.
+            if state == .ended || state == .starting {
+                self?.finishSessionRecording()
+            } else if case .failed = state {
+                self?.finishSessionRecording()
+            }
+        }
         // Warm the downloadable model when its download completes
         // (and at launch if already installed and selected), so
         // the container load doesn't land inside a live goal.
@@ -372,7 +485,18 @@ final class AppModel: ObservableObject {
         connectivityFallbackActive = false
         povRecorder.finish()
         session.stop()
+        finishSessionRecording()
         speaker.speak("Stopped.")
+    }
+
+    private func finishSessionRecording() {
+        guard sessionRecorder.activeSessionID != nil else { return }
+        sessionRecorder.finish(events: log.events, goal: session.goal)
+        refreshRecordedSessions()
+        if let latest = recordedSessions.first {
+            log.append(component: "session", event: "session_recorded",
+                       detail: "\(latest.id) digests=\(latest.digestCount) frames=\(latest.frameCount)")
+        }
     }
 
     /// Connectivity loss mid-goal (owner-specified behaviour):

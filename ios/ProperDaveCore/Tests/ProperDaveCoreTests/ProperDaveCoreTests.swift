@@ -1512,3 +1512,99 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(log.events.contains { $0.event == "evaluator_swapped" })
     }
 }
+
+extension ProperDaveCoreTests {
+    func testRecordedSessionRoundTripAndReplay() async throws {
+        // Record a two-digest walk, then replay the bundle: the
+        // gate re-decides from the recorded digests while the
+        // evaluator speaks the recorded answer stream.
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pd-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let sid = UUID()
+        let goal = GoalContext(rawText: "tell me what I pass", targets: [],
+                               kind: .describe, verbosity: .detailed)
+        let recorder = SessionRecorder(base: base)
+        recorder.begin(sessionID: sid, goalText: goal.rawText, sourceID: "iphone-camera")
+        let d1 = FrameDigest(sessionID: sid, sequence: 1, sourceID: "iphone-camera",
+                             labels: [ScoredLabel(name: "corridor", confidence: 0.9)],
+                             sceneChange: ChangeMetrics(pixelDiff: 0.3, brightness: 0.3))
+        let d2 = FrameDigest(sessionID: sid, sequence: 2, sourceID: "iphone-camera",
+                             labels: [ScoredLabel(name: "sign", confidence: 0.9)],
+                             ocrText: [OCRSpan(text: "NO SMOKING", confidence: 0.9)],
+                             sceneChange: ChangeMetrics(pixelDiff: 0.3, brightness: 0.3))
+        recorder.record(digest: d1, jpeg: Data("jpeg-one".utf8))
+        recorder.record(digest: d2, jpeg: nil)
+        // record() is queued; finish() syncs behind it.
+        let events = [
+            LogEvent(sessionID: sid, component: "speech", event: "callout_spoken", detail: "A corridor."),
+            LogEvent(sessionID: sid, component: "cloud", event: "no_callout", detail: "already_reported"),
+            LogEvent(component: "speech", event: "callout_spoken", detail: "Unrelated session."),
+        ]
+        recorder.finish(events: events, goal: goal)
+
+        let summaries = RecordedSessionStore.summaries(base: base)
+        XCTAssertEqual(summaries.count, 1)
+        let meta = try XCTUnwrap(summaries.first)
+        XCTAssertEqual(meta.digestCount, 2)
+        XCTAssertEqual(meta.frameCount, 1)
+        XCTAssertEqual(meta.answers, [.callout(text: "A corridor.", relevance: 1),
+                                      .noCallout(reason: "already_reported")])
+        let loaded = RecordedSessionStore.loadDigests(base: base, id: sid)
+        XCTAssertEqual(loaded.map(\.sequence), [1, 2])
+        XCTAssertEqual(loaded.first?.imageRef, "frames/000001.jpg")
+        XCTAssertEqual(RecordedSessionStore.frameData(base: base, meta: meta, digest: loaded[0]),
+                       Data("jpeg-one".utf8))
+
+        let client = RecordedAnswersClient(meta: meta)
+        let parsed = try await client.parseGoal("anything")
+        XCTAssertEqual(parsed.kind, .describe)
+        let req = EscalationRequest(sessionID: sid, goal: goal, digest: d2, image: nil)
+        let first = try await client.evaluate(req)
+        XCTAssertEqual(first, .callout(text: "A corridor.", relevance: 1))
+        _ = try await client.evaluate(req)
+        let third = try await client.evaluate(req)
+        XCTAssertEqual(third, .noCallout(reason: "replay_exhausted"))
+    }
+
+    @MainActor
+    func testReplaySessionSpeaksRecordedCallout() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pd-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let sid = UUID()
+        let goal = GoalContext(rawText: "tell me what I pass", targets: [],
+                               kind: .describe, verbosity: .detailed)
+        let recorder = SessionRecorder(base: base)
+        recorder.begin(sessionID: sid, goalText: goal.rawText, sourceID: "iphone-camera")
+        recorder.record(digest: FrameDigest(
+            sessionID: sid, sequence: 1, sourceID: "iphone-camera",
+            labels: [ScoredLabel(name: "sign", confidence: 0.9)],
+            ocrText: [OCRSpan(text: "NO SMOKING", confidence: 0.9)],
+            sceneChange: ChangeMetrics(pixelDiff: 0.3, brightness: 0.3)), jpeg: nil)
+        // Describe baseline waits for a settled second digest.
+        recorder.record(digest: FrameDigest(
+            sessionID: sid, sequence: 2, sourceID: "iphone-camera",
+            labels: [ScoredLabel(name: "sign", confidence: 0.9)],
+            ocrText: [OCRSpan(text: "NO SMOKING", confidence: 0.9)],
+            sceneChange: ChangeMetrics(pixelDiff: 0.05, brightness: 0.3)), jpeg: nil)
+        recorder.finish(events: [LogEvent(sessionID: sid, component: "speech",
+                                          event: "callout_spoken", detail: "A corridor.")],
+                        goal: goal)
+        let meta = try XCTUnwrap(RecordedSessionStore.summaries(base: base).first)
+        let digests = RecordedSessionStore.loadDigests(base: base, id: sid)
+
+        let log = EventLog()
+        let session = SessionController(log: log)
+        var callouts: [String] = []
+        session.onCallout = { callouts.append($0) }
+        let source = ReplayDigestSource(digests: digests) {
+            RecordedSessionStore.frameData(base: base, meta: meta, digest: $0)
+        }
+        session.start(goalText: meta.goalText, parser: RecordedAnswersClient(meta: meta),
+                      evaluator: RecordedAnswersClient(meta: meta),
+                      source: source, interval: 0.02, cooldown: 0)
+        try await Task.sleep(for: .seconds(0.8))
+        XCTAssertEqual(callouts, ["A corridor."], "\(log.events.map(\.event))")
+    }
+}
