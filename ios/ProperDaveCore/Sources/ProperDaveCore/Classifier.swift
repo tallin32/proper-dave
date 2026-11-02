@@ -70,6 +70,19 @@ public enum Classifier {
         return max(0, min(1, score))
     }
 
+    /// Largest luminance swing against the comparison window.
+    /// Brightness is a first-class scene property for this product's
+    /// users — "how well lit is it?" is a goal, and lights going off
+    /// (or on) is salient even when no label changes. -1 (unmeasured)
+    /// on either side means no signal, never a delta.
+    public static func brightnessDelta(digest: FrameDigest, window: [FrameDigest]) -> Double {
+        let now = digest.sceneChange.brightness
+        guard now >= 0 else { return 0 }
+        return window.compactMap { past -> Double? in
+            past.sceneChange.brightness >= 0 ? abs(now - past.sceneChange.brightness) : nil
+        }.max() ?? 0
+    }
+
     public static func saliency(digest: FrameDigest, gained: Set<String>, goal: GoalContext,
                                 announced: Set<String> = []) -> (score: Double, topics: [String]) {
         var isOCR: [String: Bool] = [:]
@@ -174,6 +187,18 @@ public enum Classifier {
                     return (.escalateFrame(confidence: change, landmark: landmark), changeScores)
                 }
                 return (.escalateDigest(confidence: change, landmark: landmark), changeScores)
+            }
+            // A large brightness swing bypasses the cooldown and
+            // the saliency gate: lights going off in a room produces
+            // no new labels and scores zero saliency, yet it is one
+            // of the most salient events this product exists for
+            // (field log 00:25 — a "how well lit" goal's changes at
+            // 0.62-0.75 died under the 0.80 bypass for 20 seconds).
+            let bDelta = brightnessDelta(digest: digest, window: window)
+            if bDelta >= 0.30 {
+                let lit = Scores(change: max(change, min(1, bDelta / 0.35)),
+                                 relevance: max(sal, 0.6), landmark: landmark, topics: topics)
+                return (.escalateFrame(confidence: max(sal, 0.6), landmark: landmark), lit)
             }
             if let since = secondsSinceEscalation, since < cooldown, change < majorChangeThreshold {
                 return (.suppress(reason: "cooldown"), scores)

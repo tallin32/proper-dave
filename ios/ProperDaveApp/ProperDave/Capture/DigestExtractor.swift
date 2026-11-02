@@ -48,7 +48,25 @@ struct DigestExtractor {
         previous = current
         return FrameDigest(sessionID: sessionID, sequence: sequence, sourceID: sourceID,
                            labels: labels, ocrText: ocr,
-                           sceneChange: ChangeMetrics(pixelDiff: delta, labelDelta: delta))
+                           sceneChange: ChangeMetrics(pixelDiff: delta, labelDelta: delta,
+                                                      brightness: meanLuminance(pixelBuffer: pixelBuffer)))
+    }
+
+    /// Mean luminance 0..1 via a 1x1 area-average render — cheap at
+    /// digest rates, and the signal that tells "lights went off"
+    /// apart from "labels churned" (field log 00:25).
+    private func meanLuminance(pixelBuffer: CVPixelBuffer) -> Double {
+        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let filter = CIFilter(name: "CIAreaAverage", parameters: [
+                kCIInputImageKey: image,
+                kCIInputExtentKey: CIVector(cgRect: image.extent)]),
+              let output = filter.outputImage else { return -1 }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        ciContext.render(output, toBitmap: &pixel, rowBytes: 4,
+                         bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+                         format: .RGBA8, colorSpace: nil)
+        return (0.2126 * Double(pixel[0]) + 0.7152 * Double(pixel[1])
+                + 0.0722 * Double(pixel[2])) / 255.0
     }
 
     /// Decoded-image path (DAT hvc1 frames via VideoFrameDecoder, as in

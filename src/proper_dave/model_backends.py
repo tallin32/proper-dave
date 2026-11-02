@@ -229,6 +229,8 @@ Never invent a different goal."""
             "targets": request.goal.targets,
             "exclusions": request.goal.exclusions,
             "labels": [{"name": x.name, "confidence": x.confidence} for x in digest.labels],
+            "brightness": (round(digest.scene_change.brightness, 3)
+                           if digest.scene_change.brightness >= 0 else None),
             "ocrText": [x.text for x in digest.ocr_text],
             "recentOcrText": [[x.text for x in d.ocr_text] for d in request.recent_digests],
             "lastCallout": request.last_callout,
