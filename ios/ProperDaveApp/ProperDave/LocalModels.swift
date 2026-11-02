@@ -144,8 +144,10 @@ struct FoundationLocalClient: CloudModelClient {
 
         Convert the follow-up into the structured patch. "Just the
         landmarks" means verbosity landmarks. "Skip X" excludes X.
-        "Only X" replaces the targets. If the follow-up is not a goal
-        change you can identify, set understood to false.
+        "Only X" replaces the targets. "Keep an eye out for X",
+        "also watch for X", and "include X" add X to the targets.
+        If the follow-up is not a goal change you can identify, set
+        understood to false.
         """
         let output = try await makeSession().respond(to: prompt, generating: LocalPatchOutput.self).content
         guard output.understood else { throw RefinementError.unparseable }

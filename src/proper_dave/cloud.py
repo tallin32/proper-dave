@@ -14,6 +14,13 @@ def apply_refinement(current: GoalContext, refinement: str) -> GoalContext:
     """Deterministic goal patcher — demo/no-model fallback ONLY
     (TRD-003 §2). Mirrors GoalPatch.deterministic in Swift."""
     low = refinement.strip().lower()
+    # Strip discourse filler ("while you're at it, …") so the
+    # operative clause leads; mirrors GoalPatch.deterministic.
+    for filler in ("while you're at it ", "while you are at it ",
+                   "while you were at it "):
+        if low.startswith(filler):
+            low = low[len(filler):]
+            break
     patched = current.model_copy(deep=True)
     changed = False
     if "landmark" in low and ("just" in low or "only" in low):
@@ -38,6 +45,19 @@ def apply_refinement(current: GoalContext, refinement: str) -> GoalContext:
             item = low[len(marker):].strip(" .!?\n\t")
             if item:
                 patched.targets.append(item); changed = True
+    for marker in ("keep an eye out for ", "keep an eye on ",
+                   "look out for ", "watch out for ",
+                   "also watch for ", "eye out for ", "watch for "):
+        idx = low.find(marker)
+        if idx >= 0:
+            item = low[idx + len(marker):].strip(" .!?\n\t")
+            for prefix in ("the ", "a ", "an "):
+                if item.startswith(prefix):
+                    item = item[len(prefix):]
+                    break
+            if item:
+                patched.targets.append(item); changed = True
+            break
     if not changed:
         raise ValueError("unparseable refinement")
     return patched
@@ -50,6 +70,46 @@ class CloudModelClient(Protocol):
 
     def refine_goal(self, current: GoalContext, refinement: str) -> GoalContext:
         return apply_refinement(current, refinement)
+
+
+def _compound_targets(low: str) -> list[str]:
+    """Narration + named watch targets, retained together (mirrors
+    GoalIntent.compoundTargets in the Swift core)."""
+    out: list[str] = []
+
+    def clean(piece: str) -> str:
+        s = piece.strip().strip(".;").strip()
+        for prefix in ("the ", "my ", "a ", "an "):
+            if s.startswith(prefix):
+                s = s[len(prefix):]
+                break
+        return s.strip()
+
+    def add(piece: str) -> None:
+        value = clean(piece)
+        if len(value) > 1 and value not in out:
+            out.append(value)
+
+    if "including " in low:
+        tail = low.split("including ", 1)[1]
+        for stop in (";", " tell me when", " let me know when"):
+            tail = tail.split(stop)[0]
+        for part in tail.split(","):
+            for piece in part.split(" and "):
+                add(piece)
+    for marker in ("tell me when i approach ", "tell me when i reach ",
+                   "tell me when i get to ", "tell me when you see ",
+                   "let me know when i approach ", "let me know when i reach ",
+                   "let me know when you see "):
+        if marker in low:
+            tail = low.split(marker, 1)[1]
+            cut = len(tail)
+            for stop in (",", ";", ".", " and tell", " and let"):
+                idx = tail.find(stop)
+                if idx != -1:
+                    cut = min(cut, idx)
+            add(tail[:cut])
+    return out[:6]
 
 
 class FakeCloudModel:
@@ -92,14 +152,15 @@ class FakeCloudModel:
             return GoalContext(rawText=text, targets=["scene changes"], kind="describe")
         if any(m in low for m in self._QUESTION_MARKERS):
             if any(m in low for m in self._CONTINUING_MARKERS):
-                return GoalContext(rawText=text, targets=[], kind="describe",
-                                   verbosity="detailed")
+                return GoalContext(rawText=text, targets=_compound_targets(low),
+                                   kind="describe", verbosity="detailed")
             # One-shot question about the current scene: answer from
             # the first frame, do not set up a watch (TRD-000 §6).
             return GoalContext(rawText=text, targets=["the scene in front of the camera"],
                                kind="question")
         if any(m in low for m in self._DESCRIBE_MARKERS):
-            focus = sorted({label for needle, label in self._FOCUS if needle in low})
+            focus = sorted({label for needle, label in self._FOCUS if needle in low}
+                           | set(_compound_targets(low)))
             verbosity = "notable"
             if "landmark" in low and ("just" in low or "only" in low):
                 verbosity = "landmarks"
