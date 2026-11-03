@@ -124,6 +124,12 @@ final class AppModel: ObservableObject {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("RecordedSessions", isDirectory: true)
     }
+    /// Automatic flashlight while watching (Settings → Watching,
+    /// on by default): the phone torch follows the measured scene
+    /// brightness during a camera goal. Applied when a goal starts.
+    @Published var autoTorchEnabled: Bool {
+        didSet { save(autoTorchEnabled, "autoTorchEnabled") }
+    }
     let sessionRecorder = SessionRecorder(base: AppModel.recordingsBase)
     @Published private(set) var recordedSessions: [RecordedSessionMeta] = []
     @Published private(set) var sendingSessionID: UUID?
@@ -300,6 +306,7 @@ final class AppModel: ObservableObject {
         speechPitch = d.double(forKey: "speechPitch") == 0 ? 1.0 : d.double(forKey: "speechPitch")
         povRecordingEnabled = d.bool(forKey: "povRecordingEnabled")
         sessionRecordingEnabled = d.bool(forKey: "sessionRecordingEnabled")
+        autoTorchEnabled = d.object(forKey: "autoTorchEnabled") == nil ? true : d.bool(forKey: "autoTorchEnabled")
         sourceKind = FrameSourceKind(rawValue: d.string(forKey: "sourceKind") ?? "") ?? .mock
         serverHost = d.string(forKey: "serverHost") ?? ""
         serverPort = d.integer(forKey: "serverPort") == 0 ? 3283 : d.integer(forKey: "serverPort")
@@ -450,7 +457,13 @@ final class AppModel: ObservableObject {
     func makeSource(for kind: FrameSourceKind) -> any DigestSource {
         switch kind {
         case .mock: return MockDigestSource()
-        case .camera: return CameraDigestSource()
+        case .camera:
+            let source = CameraDigestSource()
+            source.autoTorchEnabled = autoTorchEnabled
+            source.onEvent = { [weak self] event, detail in
+                Task { @MainActor in self?.log.append(component: "capture", event: event, detail: detail) }
+            }
+            return source
         case .glasses:
             let source = MetaGlassesDigestSource()
             source.onFailure = { [weak self] message in
