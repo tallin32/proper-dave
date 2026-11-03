@@ -17,8 +17,27 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
     private var extractor = DigestExtractor()
     private var configured = false
     private var framesBySequence: [Int: Data] = [:]
+    private var captureDevice: AVCaptureDevice?
+    private var torchPolicy = TorchPolicy()
+    /// Automatic flashlight (Settings, on by default): applied from
+    /// the digest brightness on this queue. Glasses have no torch
+    /// here — absence is a no-op, never a failure (CAP-13).
+    var autoTorchEnabled = true
+    var onEvent: ((String, String) -> Void)?
 
     func imageData(for digest: FrameDigest) -> Data? { framesBySequence[digest.sequence] }
+
+    private func applyTorch(_ on: Bool) {
+        guard let device = captureDevice, device.hasTorch else { return }
+        do {
+            try device.lockForConfiguration()
+            if on { try device.setTorchModeOn(level: 1.0) } else { device.torchMode = .off }
+            device.unlockForConfiguration()
+            onEvent?("torch_\(on ? "on" : "off")", "auto flashlight")
+        } catch {
+            onEvent?("torch_failed", error.localizedDescription)
+        }
+    }
 
     func setCadence(_ interval: TimeInterval) {
         queue.async { [weak self] in self?.interval = interval }
@@ -34,7 +53,11 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
     }
 
     func stop() {
-        queue.async { [weak self] in self?.captureSession.stopRunning() }
+        queue.async { [weak self] in
+            guard let self else { return }
+            if let off = torchPolicy.reset() { applyTorch(off) }
+            captureSession.stopRunning()
+        }
         continuation?.finish()
         continuation = nil
     }
@@ -49,6 +72,7 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
                    let input = try? AVCaptureDeviceInput(device: device),
                    captureSession.canAddInput(input) {
                     captureSession.addInput(input)
+                    captureDevice = device
                 }
                 output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
                 output.setSampleBufferDelegate(self, queue: queue)
@@ -79,6 +103,9 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
         sequence += 1
         if let digest = extractor.digest(sampleBuffer: sampleBuffer, sessionID: sessionID,
                                          sequence: sequence, sourceID: sourceID) {
+            if autoTorchEnabled, let want = torchPolicy.update(brightness: digest.sceneChange.brightness) {
+                applyTorch(want)
+            }
             if let buffer = CMSampleBufferGetImageBuffer(sampleBuffer),
                let jpeg = extractor.jpegData(pixelBuffer: buffer) {
                 framesBySequence[sequence] = jpeg

@@ -1608,3 +1608,19 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(callouts, ["A corridor."], "\(log.events.map(\.event))")
     }
 }
+
+extension ProperDaveCoreTests {
+    func testTorchPolicyDarkOnBrightOff() {
+        var p = TorchPolicy()
+        XCTAssertNil(p.update(brightness: 0.30))          // lit room: nothing
+        XCTAssertEqual(p.update(brightness: 0.05), true)  // dark band: on
+        XCTAssertNil(p.update(brightness: 0.30))          // torch-lit: no flicker off
+        XCTAssertNil(p.update(brightness: -1))            // unmeasured: no opinion
+        XCTAssertNil(p.update(brightness: 0.60))          // bright 1
+        XCTAssertNil(p.update(brightness: 0.55))          // bright 2
+        XCTAssertEqual(p.update(brightness: 0.60), false) // sustained bright: off
+        XCTAssertNil(p.reset())                           // already off
+        _ = p.update(brightness: 0.02)
+        XCTAssertEqual(p.reset(), false)                  // goal end always kills it
+    }
+}
