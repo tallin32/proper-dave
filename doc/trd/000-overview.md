@@ -22,6 +22,23 @@ silent otherwise. The product's tone — plain-spoken, unpatronising,
 no cheerfulness loop — is encoded in the name. If the codename ever
 changes, the register must not.
 
+## 1b. The governing metaphor
+
+The output target is that of a well trained sighted guide, minus
+the ability to detect terrain. A guide works to a brief: the user
+asks for specific things, and the guide provides those things —
+"just read me the signs" and "this is my first time in Dubai, tell
+me everything" are the same relationship at different scope, and
+the goal parser, the verbosity tiers, and mid-goal refinement are
+that relationship implemented. A guide who narrates candy wrappers
+to someone who asked only for signs is not being thorough; they are
+being badly trained. Silence between briefs is competence, not
+absence. Terrain, finally, is expressly not Dave's: it belongs to
+the cane, the dog, and the user's own skill, and claiming any of
+it would be assistance applied where it was not requested. Every
+future argument about when Dave should speak can be settled
+against this paragraph.
+
 ## 2. What the MVP must prove
 
 1. Indoors: "tell me when the elevator arrives at my floor" produces one
