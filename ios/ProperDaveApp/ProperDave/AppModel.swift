@@ -135,7 +135,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var sendingSessionID: UUID?
 
     func refreshRecordedSessions() {
+        let active = sessionRecorder.activeSessionID
         recordedSessions = RecordedSessionStore.summaries(base: Self.recordingsBase)
+            .map { meta in
+                // Bundles orphaned by app termination get their true
+                // counts on next launch; the live one is left alone.
+                meta.id == active ? meta
+                    : RecordedSessionStore.finalizeIfStub(base: Self.recordingsBase, meta: meta)
+            }
     }
 
     func replayRecordedSession(_ meta: RecordedSessionMeta) {
@@ -171,6 +178,13 @@ final class AppModel: ObservableObject {
     /// actual JPGs. Manual, per session, Developer Mode only.
     func sendRecordedSession(_ meta: RecordedSessionMeta) {
         guard sendingSessionID == nil else { return }
+        // The live bundle's answers and log slice only exist once
+        // the goal ends; sending mid-walk shipped frames alone
+        // (first field bundle). Refuse plainly instead.
+        if sessionRecorder.activeSessionID == meta.id {
+            speaker.speak("That session is still recording. Stop the goal first, then send it.")
+            return
+        }
         sendingSessionID = meta.id
         Task { [weak self] in
             guard let self else { return }
@@ -182,7 +196,8 @@ final class AppModel: ObservableObject {
             var sent = 0
             do {
                 for file in files {
-                    let rel = file.path.replacingOccurrences(of: dir.path + "/", with: "")
+                    let rel = RecordedSessionStore.relativePath(of: file, in: dir)
+                    log.append(component: "session", event: "session_send_file", detail: rel)
                     guard let url = URL(string: "http://\(serverHost):\(serverPort)/v1/dev/sessions/\(meta.id.uuidString)/files/\(rel)") else { continue }
                     var request = URLRequest(url: url)
                     request.httpMethod = "POST"

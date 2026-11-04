@@ -673,11 +673,12 @@ extension ProperDaveCoreTests {
 
     final class AlreadyReportedClient: CloudModelClient, @unchecked Sendable {
         var modelName = "already-reported"
+        var refusal = "already_reported"
         func parseGoal(_ rawText: String) async throws -> GoalContext {
             GoalContext(rawText: rawText, targets: [], kind: .describe, verbosity: .detailed)
         }
         func evaluate(_ request: EscalationRequest) async throws -> CalloutResult {
-            .noCallout(reason: "already_reported")
+            .noCallout(reason: refusal)
         }
     }
 
@@ -1622,5 +1623,143 @@ extension ProperDaveCoreTests {
         XCTAssertNil(p.reset())                           // already off
         _ = p.update(brightness: 0.02)
         XCTAssertEqual(p.reset(), false)                  // goal end always kills it
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testBundleRelativePathIsStructural() {
+        // Regression: string-prefix stripping on iOS container paths
+        // could yield an absolute path, which the dev-upload endpoint
+        // refuses with a 400. Components cannot drift that way.
+        let dir = URL(fileURLWithPath: "/private/var/mobile/Containers/Data/Application/ABC/RecordedSessions/SESSION")
+        XCTAssertEqual(
+            RecordedSessionStore.relativePath(
+                of: dir.appendingPathComponent("frames/000042.jpg"), in: dir),
+            "frames/000042.jpg")
+        XCTAssertEqual(
+            RecordedSessionStore.relativePath(
+                of: dir.appendingPathComponent("digests.jsonl"), in: dir),
+            "digests.jsonl")
+        // The actual field failure: the enumerator spells the same
+        // directory with an extra /private component, which used to
+        // leave the session ID doubled in the uploaded path.
+        let varDir = URL(fileURLWithPath: "/var/mobile/Containers/Data/Application/ABC/RecordedSessions/SESSION")
+        let privateFile = URL(fileURLWithPath: "/private/var/mobile/Containers/Data/Application/ABC/RecordedSessions/SESSION/frames/000001.jpg")
+        XCTAssertEqual(
+            RecordedSessionStore.relativePath(of: privateFile, in: varDir),
+            "frames/000001.jpg")
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testRecorderFlushesDigestsBeforeFinish() {
+        // Field bundle 771865FA arrived with frames only: finish was
+        // the sole writer of digests.jsonl and the send happened
+        // mid-walk. Digests must be durable as they are recorded.
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pd-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let sid = UUID()
+        let recorder = SessionRecorder(base: base)
+        recorder.begin(sessionID: sid, goalText: "tell me what I pass", sourceID: "iphone-camera")
+        recorder.record(digest: FrameDigest(sessionID: sid, sequence: 1, sourceID: "iphone-camera",
+                                            labels: [ScoredLabel(name: "corridor", confidence: 0.9)]),
+                        jpeg: nil)
+        recorder.record(digest: FrameDigest(sessionID: sid, sequence: 2, sourceID: "iphone-camera",
+                                            labels: [ScoredLabel(name: "sign", confidence: 0.9)]),
+                        jpeg: nil)
+        _ = recorder.activeSessionID  // drains the serial queue
+        let loaded = RecordedSessionStore.loadDigests(base: base, id: sid)
+        XCTAssertEqual(loaded.map(\.sequence), [1, 2])
+        recorder.finish(events: [], goal: nil)
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testFinalizeIfStubRepairsOrphanedBundle() {
+        // App terminated mid-goal: no finish ever ran. On next
+        // launch the stub must report true counts and an end time
+        // recovered from disk — and leave a finished bundle alone.
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pd-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let sid = UUID()
+        let recorder = SessionRecorder(base: base)
+        recorder.begin(sessionID: sid, goalText: "tell me what I pass", sourceID: "iphone-camera")
+        recorder.record(digest: FrameDigest(sessionID: sid, sequence: 1, sourceID: "iphone-camera",
+                                            labels: [ScoredLabel(name: "corridor", confidence: 0.9)]),
+                        jpeg: Data("jpeg".utf8))
+        _ = recorder.activeSessionID
+        let stub = RecordedSessionStore.summaries(base: base)[0]
+        XCTAssertNil(stub.endedAt)
+        let repaired = RecordedSessionStore.finalizeIfStub(base: base, meta: stub)
+        XCTAssertEqual(repaired.digestCount, 1)
+        XCTAssertEqual(repaired.frameCount, 1)
+        XCTAssertNotNil(repaired.endedAt)
+        XCTAssertEqual(RecordedSessionStore.finalizeIfStub(base: base, meta: repaired), repaired)
+    }
+}
+
+extension ProperDaveCoreTests {
+    func testDigestInboxCoalescesToNewest() async {
+        // While the model is busy, scenes that have gone stale
+        // behind the newest pending one are dropped and counted;
+        // recent scenes are still judged in order.
+        let inbox = DigestInbox()
+        let now = Date()
+        func d(_ seq: Int, age: TimeInterval) -> FrameDigest {
+            FrameDigest(sessionID: UUID(), sequence: seq, capturedAt: now.addingTimeInterval(-age),
+                        sourceID: "test")
+        }
+        await inbox.offer(d(1, age: 30))
+        await inbox.offer(d(2, age: 20))
+        await inbox.offer(d(3, age: 0))
+        let newest = await inbox.take()
+        XCTAssertEqual(newest?.sequence, 3)
+        let dropped = await inbox.drainDropped()
+        XCTAssertEqual(dropped, 2)
+        await inbox.finish()
+        let after = await inbox.take()
+        XCTAssertNil(after)
+        // Fresh scenes are never coalesced away.
+        let inbox2 = DigestInbox()
+        await inbox2.offer(d(1, age: 0.2))
+        await inbox2.offer(d(2, age: 0))
+        let first = await inbox2.take()
+        XCTAssertEqual(first?.sequence, 1)
+        let second = await inbox2.take()
+        XCTAssertEqual(second?.sequence, 2)
+    }
+
+    func testNoNewMaterialReasonClassification() {
+        XCTAssertTrue(SessionController.isNoNewMaterialReason("already_reported"))
+        XCTAssertTrue(SessionController.isNoNewMaterialReason(
+            "No new sign or object directly bearing on the target; same view persists."))
+        XCTAssertTrue(SessionController.isNoNewMaterialReason(
+            "No new elements to report beyond existing scene elements."))
+        XCTAssertFalse(SessionController.isNoNewMaterialReason("low_confidence"))
+        XCTAssertFalse(SessionController.isNoNewMaterialReason("too_soon"))
+        XCTAssertFalse(SessionController.isNoNewMaterialReason("rate_limited"))
+    }
+
+    @MainActor
+    func testProseNothingNewOverriddenOnTotalChange() async throws {
+        // Field walk 2026-11-04: the fallback model refused in
+        // prose, not the enum, and the override never fired. The
+        // class is the meaning ("nothing new"), not the spelling.
+        let log = EventLog()
+        let session = SessionController(log: log)
+        var spoken: [String] = []
+        session.onCallout = { spoken.append($0) }
+        let client = AlreadyReportedClient()
+        client.refusal = "No new sign or object directly bearing on the target; same view persists."
+        session.start(goalText: "Tell me what I see as I pass",
+                      client: client, source: RotatingSceneSource(),
+                      interval: 0.05, cooldown: 0)
+        try await Task.sleep(for: .seconds(1.2))
+        session.stop()
+        XCTAssertTrue(log.events.contains { $0.event == "already_reported_overridden" },
+                      "events: \(log.events.map(\.event))")
+        XCTAssertTrue(spoken.count >= 2, "spoken: \(spoken)")
     }
 }

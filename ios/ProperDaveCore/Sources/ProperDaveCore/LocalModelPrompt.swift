@@ -52,6 +52,7 @@ public enum LocalModelPrompt {
         Recent OCR: \(recent.isEmpty ? "none" : recent)
         Last callout: \(request.lastCallout ?? "none")
         Attached image: \(request.image == nil ? "no — judge only from the labels and OCR above; do not invent visual details" : "yes")
+        Scope: match the response to the brief. An open-ended goal ("what do you see?") admits notable observations about condition or character; a goal naming targets or asking only for signs admits only what bears on the brief — no commentary, advice, or side observations outside it.
 
         \(request.goal.kind == .question
             ? """

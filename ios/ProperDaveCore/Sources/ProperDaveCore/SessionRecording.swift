@@ -95,8 +95,47 @@ public enum RecordedSessionStore {
             .reduce(0) { $0 + ($1 ?? 0) }
     }
 
+    /// Path of a bundle file relative to its session directory, for
+    /// upload. Never string-prefix, and never a bare component-count
+    /// drop: iOS spells the same container path two ways — the
+    /// directory URL as /var/mobile/... and enumerator children as
+    /// /private/var/mobile/... — so a count-based drop left the
+    /// session directory's own name in the result and the server
+    /// refused the doubled path (400, field report 2026-11-02).
+    /// Standardize both, then fall back to anchoring on the
+    /// directory's own last component.
+    public static func relativePath(of file: URL, in dir: URL) -> String {
+        let f = file.standardizedFileURL.pathComponents
+        let d = dir.standardizedFileURL.pathComponents
+        if f.count > d.count, Array(f.prefix(d.count)) == d {
+            return f.dropFirst(d.count).joined(separator: "/")
+        }
+        if let anchor = f.lastIndex(of: dir.lastPathComponent), anchor < f.count - 1 {
+            return f[(anchor + 1)...].joined(separator: "/")
+        }
+        return file.lastPathComponent
+    }
+
     public static func delete(base: URL, id: UUID) {
         try? FileManager.default.removeItem(at: directory(base: base, id: id))
+    }
+
+    /// Repair a bundle orphaned by app termination (crash, swipe
+    /// kill, jetsam) before any stop path could finish it: counts
+    /// and end time are recoverable from what's on disk; the log
+    /// slice and recorded answers are not (both live in memory),
+    /// and stay absent rather than being reconstructed.
+    public static func finalizeIfStub(base: URL, meta: RecordedSessionMeta) -> RecordedSessionMeta {
+        guard meta.endedAt == nil else { return meta }
+        var m = meta
+        let digests = loadDigests(base: base, id: meta.id)
+        m.digestCount = digests.count
+        m.endedAt = digests.last?.capturedAt ?? meta.startedAt
+        let framesDir = directory(base: base, id: meta.id).appendingPathComponent("frames")
+        let frames = (try? FileManager.default.contentsOfDirectory(atPath: framesDir.path)) ?? []
+        m.frameCount = frames.filter { $0.hasSuffix(".jpg") }.count
+        writeMeta(m, base: base)
+        return m
     }
 
     /// Keep the newest `retention` bundles; a walk is ~1 digest/sec
@@ -116,6 +155,7 @@ public final class SessionRecorder: @unchecked Sendable {
     private let queue = DispatchQueue(label: "nyc.bytemaster.ProperDave.session-recorder")
     private var meta: RecordedSessionMeta?
     private var digests: [FrameDigest] = []
+    private var digestFile: FileHandle?
 
     public init(base: URL) { self.base = base }
 
@@ -131,6 +171,14 @@ public final class SessionRecorder: @unchecked Sendable {
             try? FileManager.default.createDirectory(
                 at: dir.appendingPathComponent("frames", isDirectory: true),
                 withIntermediateDirectories: true)
+            // Digests flush incrementally from here on: a bundle
+            // must be analyzable (and replayable) even if the goal
+            // is still running or the app dies mid-walk — the first
+            // field bundle arrived with frames only because finish
+            // was the sole writer of digests.jsonl.
+            let digestsURL = dir.appendingPathComponent("digests.jsonl")
+            FileManager.default.createFile(atPath: digestsURL.path, contents: nil)
+            digestFile = try? FileHandle(forWritingTo: digestsURL)
             if let meta { RecordedSessionStore.writeMeta(meta, base: base) }
         }
     }
@@ -151,6 +199,13 @@ public final class SessionRecorder: @unchecked Sendable {
             digests.append(stored)
             m.digestCount = digests.count
             meta = m
+            let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
+            enc.outputFormatting = [.sortedKeys]
+            if let line = try? enc.encode(stored),
+               let text = String(data: line, encoding: .utf8) {
+                digestFile?.write(Data((text + "\n").utf8))
+            }
+            if digests.count % 10 == 0 { RecordedSessionStore.writeMeta(m, base: base) }
         }
     }
 
@@ -161,6 +216,8 @@ public final class SessionRecorder: @unchecked Sendable {
     private func finishLocked(events: [LogEvent], goal: GoalContext?) {
         guard var m = meta else { return }
         meta = nil
+        try? digestFile?.close()
+        digestFile = nil
         m.endedAt = Date()
         if let goal { m.goal = goal }
         m.answers = events.filter { $0.sessionID == m.id }.compactMap { event in

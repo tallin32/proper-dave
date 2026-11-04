@@ -49,9 +49,14 @@ struct DigestExtractor {
     }
 
     /// Bounded JPEG retention for ESCALATE_FRAME: the model can only
-    /// look at a frame the source actually kept.
-    func jpegData(pixelBuffer: CVPixelBuffer) -> Data? {
-        let image = CIImage(cvPixelBuffer: pixelBuffer)
+    /// look at a frame the source actually kept. Oriented upright:
+    /// the raw camera buffer is landscape-rotated, and until now the
+    /// model, the POV footage, and every recorded frame were all
+    /// sideways (field frames 2026-11-03). Glasses keep .up (their
+    /// frames arrive upright); the phone camera passes .right.
+    func jpegData(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation = .up) -> Data? {
+        var image = CIImage(cvPixelBuffer: pixelBuffer)
+        if orientation != .up { image = image.oriented(orientation) }
         return ciContext.jpegRepresentation(of: image, colorSpace: CGColorSpaceCreateDeviceRGB(),
                                             options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.72])
     }
@@ -70,7 +75,11 @@ struct DigestExtractor {
             }
         }
         let textRequest = VNRecognizeTextRequest()
-        textRequest.recognitionLevel = .fast
+        // Accurate, not fast: sign text at walking angles is exactly
+        // where fast OCR gives up, and a sign the digest never
+        // contains is a sign the gate can never report (frame 135,
+        // field walk 2026-11-03). At digest cadence the cost is fine.
+        textRequest.recognitionLevel = .accurate
         try? handler.perform([textRequest])
         if let observations = textRequest.results {
             ocr = observations.compactMap { $0.topCandidates(1).first }

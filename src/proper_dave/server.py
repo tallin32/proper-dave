@@ -140,7 +140,8 @@ def create_app(client: CloudModelClient | None = None, *, api_key: str | None = 
             len(parts) == 2 and parts[0] == "frames"
             and parts[1].endswith(".jpg") and parts[1][:-4].isdigit())
         if not allowed or ".." in parts or Path(file_path).is_absolute():
-            return _err(400, "bad_request", "File path is not part of a session bundle.")
+            return _err(400, "bad_request",
+                        f"File path is not part of a session bundle: {file_path}")
         body = await request.body()
         if len(body) > 10 * 1024 * 1024:
             return _err(413, "payload_too_large", "File is too large.")
