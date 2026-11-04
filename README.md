@@ -2,11 +2,9 @@
 
 An absurdly customizable AI visual assistant, designed to give you only the visual information you need and/or ask for
 
-Design: [back-of-napkin sketch](doc/back-of-napkin-sketch.md) · [TRDs](doc/trd/README.md)
+Design: [back-of-napkin sketch](doc/back-of-napkin-sketch.md) · [TRDs](doc/trd/README.md) · [Architecture, one page](doc/architecture.md) · [Bring your own model](doc/bring-your-own-model.md)
 
 ## Implemented so far
-
-Build step 1–2 from TRD-000 §8:
 
 - **Classifier harness** (`src/proper_dave/classifier.py`, TRD-002) — pure,
   replayable scoring gate with cooldown, already-reported suppression, and
@@ -29,15 +27,22 @@ The server picks its model back end by configuration (TRD-003 CLD-04):
 `fake` (default), `local` (an OpenAI-compatible endpoint on this
 machine, e.g. Ollama), or `frontier` (a hosted OpenAI-compatible API;
 key lives only in the server's environment). The client never knows
-which is live; `/v1/health` reports it. Still to build: field
-verification on real glasses, and the fully-offline on-device fallback.
+which is live; `/v1/health` reports it. Since the first field walks:
+offline on-device tiers (Apple Foundation model and downloadable Qwen
+packs) with mid-goal connectivity-loss failover, conversation mode
+with a typed/voice control plane, a signage fast-lane and settled-scene
+escalation in the gate, automatic flashlight in sustained darkness,
+session recording with deterministic replay and Developer-Mode upload
+for classifier tuning, and POV demo-footage export. The gate's tuning
+loop — record a known walk, re-judge it offline — is described in
+[architecture.md](doc/architecture.md).
 
 ## Run
 
 ```sh
 uv sync --group dev
 uv run proper-dave-server     # 0.0.0.0:3283 ("DAVE")
-uv run pytest                 # 26 tests
+uv run pytest                 # 62 tests
 ```
 
 Dev server against a workstation-local model, or a frontier API:
@@ -52,7 +57,7 @@ PROPER_DAVE_MODEL_BACKEND=frontier PROPER_DAVE_FRONTIER_BASE_URL=... \
 
 ```sh
 open ios/ProperDaveApp/ProperDave.xcodeproj
-swift test --package-path ios/ProperDaveCore   # 8 tests
+swift test --package-path ios/ProperDaveCore   # 89 tests
 ```
 
 Meta DAT credentials go in `ios/ProperDaveApp/Secrets.xcconfig`
