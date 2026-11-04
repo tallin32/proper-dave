@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import ProperDaveCore
+import UIKit
 
 /// Phone-camera source: AVFoundation frames throttled to the session
 /// interval, digested on device. Works with no glasses present (CAP-13).
@@ -17,6 +18,40 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
     private var extractor = DigestExtractor()
     private var configured = false
     private var framesBySequence: [Int: Data] = [:]
+    private var stopped = true
+    private var observers: [NSObjectProtocol] = []
+
+    override init() {
+        super.init()
+        // iOS stops the camera when the app leaves the foreground
+        // (answering a notification mid-goal is enough) and does not
+        // promise to restart it on return: without this, the goal
+        // survives the switch but comes back blind. Termination is
+        // still possible — that side is durability (incremental
+        // bundle flush + launch repair), not resurrection.
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: AVCaptureSession.interruptionEndedNotification,
+            object: captureSession, queue: nil) { [weak self] _ in
+            self?.resumeIfNeeded(reason: "interruption ended")
+        })
+        observers.append(center.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil, queue: nil) { [weak self] _ in
+            self?.resumeIfNeeded(reason: "returned to foreground")
+        })
+    }
+
+    deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
+
+    private func resumeIfNeeded(reason: String) {
+        queue.async { [weak self] in
+            guard let self, !stopped, configured, !captureSession.isRunning else { return }
+            captureSession.startRunning()
+            onEvent?("capture_resumed", reason)
+        }
+    }
+
     private var captureDevice: AVCaptureDevice?
     private var torchPolicy = TorchPolicy()
     /// Automatic flashlight (Settings, on by default): applied from
@@ -46,6 +81,7 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
     func stream(sessionID: UUID, interval: TimeInterval) -> AsyncStream<FrameDigest> {
         self.sessionID = sessionID
         self.interval = interval
+        queue.async { [weak self] in self?.stopped = false }
         return AsyncStream { [weak self] continuation in
             self?.continuation = continuation
             self?.startCapture()
@@ -55,6 +91,7 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
     func stop() {
         queue.async { [weak self] in
             guard let self else { return }
+            stopped = true
             if let off = torchPolicy.reset() { applyTorch(off) }
             captureSession.stopRunning()
         }
@@ -107,7 +144,7 @@ final class CameraDigestSource: NSObject, DigestSource, AVCaptureVideoDataOutput
                 applyTorch(want)
             }
             if let buffer = CMSampleBufferGetImageBuffer(sampleBuffer),
-               let jpeg = extractor.jpegData(pixelBuffer: buffer) {
+               let jpeg = extractor.jpegData(pixelBuffer: buffer, orientation: .right) {
                 framesBySequence[sequence] = jpeg
                 framesBySequence = framesBySequence.filter { $0.key > sequence - 5 }
             }

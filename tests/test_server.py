@@ -136,3 +136,10 @@ def test_dev_upload_stores_bundle_files(tmp_path):
     r = c.post(f"/v1/dev/sessions/{SID}/files/notes.txt", content=b"x")
     assert r.status_code == 400
     assert not (tmp_path / "evil.jpg").exists()
+
+
+def test_dev_upload_rejection_names_the_path(tmp_path):
+    c = client(dev_upload_dir=str(tmp_path))
+    r = c.post(f"/v1/dev/sessions/{SID}/files/notes.txt", content=b"x")
+    assert r.status_code == 400
+    assert "notes.txt" in r.json()["error"]["message"]

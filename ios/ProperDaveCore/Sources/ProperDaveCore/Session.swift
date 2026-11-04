@@ -65,6 +65,46 @@ public final class MockDigestSource: DigestSource, @unchecked Sendable {
     public func stop() { task?.cancel() }
 }
 
+/// Staleness-purging digest inbox between a source stream and
+/// the judging loop. While a model call is in flight (5-20s in
+/// the field), digests used to buffer unboundedly in the stream
+/// and were then judged in stale batches — whole bursts share a
+/// timestamp in field walk 2026-11-04. Recent digests are judged
+/// in order (the describe baseline needs its first frames); only
+/// scenes older than `staleness` behind the newest pending one
+/// are dropped and counted — a walking user has left those rooms.
+public actor DigestInbox {
+    public static let staleness: TimeInterval = 4
+    private var queue: [FrameDigest] = []
+    private var finished = false
+    private var droppedCount = 0
+
+    public init() {}
+
+    public func offer(_ digest: FrameDigest) { queue.append(digest) }
+
+    public func finish() { finished = true }
+
+    public func take() async -> FrameDigest? {
+        while true {
+            if !queue.isEmpty {
+                let cutoff = queue.last!.capturedAt.addingTimeInterval(-Self.staleness)
+                let before = queue.count
+                queue.removeAll { $0.capturedAt < cutoff }
+                droppedCount += before - queue.count
+                if !queue.isEmpty { return queue.removeFirst() }
+            }
+            if finished { return nil }
+            do { try await Task.sleep(for: .milliseconds(25)) } catch { return nil }
+        }
+    }
+
+    public func drainDropped() -> Int {
+        defer { droppedCount = 0 }
+        return droppedCount
+    }
+}
+
 public enum EvaluatorError: LocalizedError {
     case timedOut(seconds: Int)
     public var errorDescription: String? {
@@ -366,11 +406,24 @@ public final class SessionController: ObservableObject {
         // so a fallback's success cannot masquerade as restoration.
         var lostEvaluatorName: String?
         var seenEvaluatorGeneration = evaluatorGeneration
-        for await digest in source.stream(sessionID: sessionID, interval: interval) {
+        let inbox = DigestInbox()
+        let pump = Task {
+            for await d in source.stream(sessionID: sessionID, interval: interval) {
+                await inbox.offer(d)
+            }
+            await inbox.finish()
+        }
+        defer { pump.cancel() }
+        while let digest = await inbox.take() {
             // A cancelled task belongs to a superseded source: stop eating
             // its frames even though the session itself is still watching.
             if Task.isCancelled { break }
             received += 1
+            let coalesced = await inbox.drainDropped()
+            if coalesced > 0 {
+                log.append(sessionID: sessionID, component: "capture", event: "digests_coalesced",
+                           detail: "dropped=\(coalesced) stale digests while the model was busy")
+            }
             onFrame?(digest, source.imageData(for: digest))
             if evaluatorGeneration != seenEvaluatorGeneration {
                 seenEvaluatorGeneration = evaluatorGeneration
@@ -655,7 +708,8 @@ public final class SessionController: ObservableObject {
                             ? "The model is rate limited right now. I'll keep watching and try again shortly."
                             : "The model isn't responding right now. I'll keep watching and try again shortly.")
                     }
-                } else if reason == "already_reported", goal.kind == .describe,
+                } else if (Self.isNoNewMaterialReason(reason) || reason == "not_relevant"),
+                          goal.kind == .describe,
                           goal.verbosity == .detailed, scores.change >= 0.80 {
                     // The gate measured a near-total change and the
                     // model still claims the view was reported: that
@@ -743,6 +797,20 @@ public final class SessionController: ObservableObject {
                 "hostname could not be found", "network connection was lost",
                 "cannot connect to the server", "connection reset",
                 "could not connect"].contains { low.contains($0) }
+    }
+
+    /// "Nothing new here" refusals, in whatever words the model
+    /// chose. The enum value is `already_reported`, but field walk
+    /// 2026-11-04 returned prose ("No new sign or object directly
+    /// bearing on the target; same view persists") on digests with
+    /// measured change 0.92-1.00, and the exact-string override
+    /// never recognized it. Classified by meaning, not spelling:
+    /// any reason asserting no new material. Genuine classes
+    /// (low_confidence, too_soon, rate signals) are untouched.
+    nonisolated static func isNoNewMaterialReason(_ reason: String) -> Bool {
+        let low = reason.lowercased()
+        return ["no new", "nothing new", "already", "same view", "same scene",
+                "unchanged", "no change", "no material"].contains { low.contains($0) }
     }
 
     nonisolated static func isPromptEcho(_ text: String) -> Bool {
