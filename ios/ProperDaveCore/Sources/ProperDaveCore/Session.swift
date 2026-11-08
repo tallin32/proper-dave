@@ -150,6 +150,15 @@ public final class SessionController: ObservableObject {
     /// actual frames Dave judged from. Data is nil for sources that
     /// retain no image. Off unless the app installs a handler.
     public var onFrame: ((FrameDigest, Data?) -> Void)?
+    /// A scoped (one-off) request ended by decay — target lost or
+    /// timed out. The app decides whether that deserves speech:
+    /// ScopedRequestStack.shouldAnnounce is the policy (only when
+    /// the user was being actively guided). Fulfilment and explicit
+    /// cancellation are reported through their own paths.
+    public var onScopedRequestDecayed: ((ScopedRequest, ScopedRequestEnd) -> Void)?
+    /// One-off requests in flight ("read that sign"), pushed over
+    /// the running goal (TRD-007). At most one at a time.
+    public private(set) var scopedRequests = ScopedRequestStack()
     private var evaluatorGeneration = 0
     /// Called when a stream belonging to the *active* source ends while
     /// watching. The app may return a fallback source (e.g. phone camera)
@@ -314,6 +323,29 @@ public final class SessionController: ObservableObject {
         evaluatorGeneration += 1
         log.append(sessionID: sessionID, component: "cloud", event: "evaluator_swapped",
                    detail: "reason=\(reason) model=\(newClient.modelName)")
+    }
+
+    /// Push a one-off scoped request over the running goal
+    /// (TRD-007): "read that sign" while "tell me what I see" keeps
+    /// running underneath. Returns the superseded request, if any.
+    @discardableResult
+    public func beginScopedRequest(toolID: String, target: String,
+                                   guidanceActive: Bool = false) -> ScopedRequest? {
+        let superseded = scopedRequests.push(ScopedRequest(
+            toolID: toolID, target: target, now: Date(), guidanceActive: guidanceActive))
+        log.append(sessionID: sessionID, component: "session", event: "scoped_request_started",
+                   detail: "\(toolID) target=\(target)\(superseded != nil ? " (superseded \(superseded!.toolID))" : "")")
+        return superseded
+    }
+
+    /// Explicit "never mind": end the active scoped request, if any.
+    /// The parent goal is untouched. Returns true if one was active.
+    @discardableResult
+    public func cancelScopedRequest() -> Bool {
+        guard let ended = scopedRequests.cancel() else { return false }
+        log.append(sessionID: sessionID, component: "session", event: "scoped_request_cancelled",
+                   detail: "\(ended.toolID) target=\(ended.target)")
+        return true
     }
 
     /// Deterministic status for "what are you doing?": composed from
@@ -511,11 +543,35 @@ public final class SessionController: ObservableObject {
                     continue
                 }
             }
+            var scopedEscalation = false
+            // Scoped one-off requests (TRD-007): decay is evaluated
+            // per digest against target visibility, and a visible
+            // target earns an immediate escalation — the gate does
+            // not make a user who just asked wait out a cooldown.
+            if let active = scopedRequests.active {
+                let targetVisible = digest.labels.contains {
+                    $0.name.lowercased() == active.target.lowercased()
+                } || (active.target.lowercased() == "sign" && !digest.ocrText.isEmpty)
+                || digest.ocrText.contains { $0.text.lowercased().contains(active.target.lowercased()) }
+                if let end = scopedRequests.evaluate(now: digest.capturedAt, targetVisible: targetVisible) {
+                    log.append(sessionID: sessionID, component: "session", event: "scoped_request_decayed",
+                               detail: "\(active.toolID) target=\(active.target) end=\(end)")
+                    onScopedRequestDecayed?(active, end)
+                } else if targetVisible {
+                    scopedEscalation = true
+                    scopedRequests.complete()
+                }
+            }
             let since = lastEscalationAt.map { Date().timeIntervalSince($0) }
             var (decision, scores) = Classifier.evaluate(
                 digest: digest, window: window, goal: goal, lastCallout: lastCallout,
                 secondsSinceEscalation: since, reportedLandmarks: reportedLandmarks,
                 announcedTopics: announcedTopics, cooldown: cooldown)
+            if scopedEscalation {
+                decision = .escalateDigest(confidence: 1, landmark: nil)
+                log.append(sessionID: sessionID, component: "session", event: "scoped_request_escalation",
+                           detail: "digest #\(digest.sequence) escalated for scoped request")
+            }
             log.append(sessionID: sessionID, component: "classifier", event: "decision",
                        detail: "#\(digest.sequence) \(decision.name) change=\(String(format: "%.2f", scores.change)) relevance=\(String(format: "%.2f", scores.relevance)) lum=\(digest.sceneChange.brightness >= 0 ? String(format: "%.2f", digest.sceneChange.brightness) : "n/a") mot=\(digest.sceneChange.motion >= 0 ? String(format: "%.2f", digest.sceneChange.motion) : "n/a") src=\(digest.sourceID)")
             decisionTrail.append("#\(digest.sequence) \(decision.name)")
@@ -858,6 +914,7 @@ public final class SessionController: ObservableObject {
         if state != .idle { log.append(sessionID: sessionID, component: "session", event: "goal_ended") }
         activeSourceID = nil
         lowLightOfferPending = false
+        scopedRequests.cancel()
         state = confirm ? .ended : .idle
     }
 
