@@ -1762,4 +1762,90 @@ extension ProperDaveCoreTests {
                       "events: \(log.events.map(\.event))")
         XCTAssertTrue(spoken.count >= 2, "spoken: \(spoken)")
     }
+
+    // MARK: Tool registry & scoped requests (TRD-007)
+
+    func testRegistryRejectsDuplicateAndSkillValidates() throws {
+        var registry = ToolRegistry.builtin()
+        XCTAssertNotNil(registry.tool("read_sign"))
+        XCTAssertThrowsError(try registry.register(
+            RegisteredTool(id: "read_sign", summary: "dup", location: .device))) {
+            XCTAssertEqual($0 as? RegistryError, .duplicateTool("read_sign"))
+        }
+        let good = SkillManifest(id: "signage", displayName: "Signage",
+                                 invocations: [.init(tool: "read_sign",
+                                                     parameters: ["target": "sign"])])
+        XCTAssertNoThrow(try good.validated(against: registry))
+        let badTool = SkillManifest(id: "x", displayName: "X",
+                                    invocations: [.init(tool: "teleport")])
+        XCTAssertThrowsError(try badTool.validated(against: registry)) {
+            XCTAssertEqual($0 as? RegistryError, .unknownTool("teleport"))
+        }
+        let badParam = SkillManifest(id: "y", displayName: "Y",
+                                     invocations: [.init(tool: "read_sign",
+                                                         parameters: ["speed": "fast"])])
+        XCTAssertThrowsError(try badParam.validated(against: registry)) {
+            XCTAssertEqual($0 as? RegistryError,
+                           .undeclaredParameter(tool: "read_sign", parameter: "speed"))
+        }
+    }
+
+    func testSkillManifestCodableRoundTrip() throws {
+        let skill = SkillManifest(id: "mail", displayName: "Mail run",
+                                  triggers: ["read my packages"],
+                                  invocations: [.init(tool: "read_package")])
+        let data = try JSONEncoder().encode(skill)
+        XCTAssertEqual(try JSONDecoder().decode(SkillManifest.self, from: data), skill)
+    }
+
+    func testScopedRequestDecayTimeoutAndLoss() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var stack = ScopedRequestStack()
+        stack.push(ScopedRequest(toolID: "read_sign", target: "sign", now: t0))
+        XCTAssertNil(stack.evaluate(now: t0.addingTimeInterval(5), targetVisible: true))
+        // Seen refreshes the lost-clock: 9 more unseen seconds is fine.
+        XCTAssertNil(stack.evaluate(now: t0.addingTimeInterval(14), targetVisible: false))
+        XCTAssertEqual(stack.evaluate(now: t0.addingTimeInterval(15.1), targetVisible: false),
+                       .targetLost)
+        XCTAssertNil(stack.active)
+        // Timeout is absolute even while the target stays visible.
+        stack.push(ScopedRequest(toolID: "read_sign", target: "sign", now: t0))
+        XCTAssertNil(stack.evaluate(now: t0.addingTimeInterval(44), targetVisible: true))
+        XCTAssertEqual(stack.evaluate(now: t0.addingTimeInterval(45), targetVisible: true),
+                       .timedOut)
+    }
+
+    func testScopedRequestSupersedeCancelAndAnnouncePolicy() {
+        let t0 = Date(timeIntervalSince1970: 2_000)
+        var stack = ScopedRequestStack()
+        stack.push(ScopedRequest(toolID: "read_sign", target: "sign", now: t0))
+        let old = stack.push(ScopedRequest(toolID: "read_text", target: "label", now: t0))
+        XCTAssertEqual(old?.toolID, "read_sign")
+        XCTAssertEqual(stack.active?.toolID, "read_text")
+        XCTAssertEqual(stack.cancel()?.toolID, "read_text")
+        XCTAssertNil(stack.active)
+        // Decay speaks only when the user was being guided.
+        let guided = ScopedRequest(toolID: "read_sign", target: "sign", now: t0, guidanceActive: true)
+        let unguided = ScopedRequest(toolID: "read_sign", target: "sign", now: t0)
+        XCTAssertTrue(ScopedRequestStack.shouldAnnounce(.targetLost, for: guided))
+        XCTAssertFalse(ScopedRequestStack.shouldAnnounce(.targetLost, for: unguided))
+        XCTAssertFalse(ScopedRequestStack.shouldAnnounce(.cancelled, for: guided))
+    }
+
+    func testOneOffCommandParsing() {
+        XCTAssertEqual(OneOffCommand.parse("Read that sign for me."), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("Dave, read the sign"), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("what does that sign say?"), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("never mind"), .cancelScopedRequest)
+        XCTAssertEqual(OneOffCommand.parse("forget it"), .cancelScopedRequest)
+        // Bare pronouns need a noun already attached (PR #64 review).
+        XCTAssertNil(OneOffCommand.parse("read it"))
+        XCTAssertNil(OneOffCommand.parse("read that"))
+        XCTAssertEqual(OneOffCommand.parse("read it", referent: "sign"), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("read that", referent: "sign"), .readSign)
+        // Goal-shaped utterances must never parse as one-offs.
+        XCTAssertNil(OneOffCommand.parse("watch for the stop sign"))
+        XCTAssertNil(OneOffCommand.parse("tell me when you see a sign"))
+        XCTAssertNil(OneOffCommand.parse("read that book to me"))
+    }
 }
