@@ -237,19 +237,28 @@ public enum OneOffCommand: Equatable, Sendable {
                      "help me read that sign", "help me read the sign",
                      "read this sign", "what does that sign say",
                      "what does the sign say", "what did that sign say",
-                     "what was that sign", "read it", "read that"]),
+                     "what was that sign"]),
         (.cancelScopedRequest, ["never mind", "nevermind", "forget it",
                                 "forget the sign", "skip it", "skip that",
                                 "drop it", "cancel that", "cancel the sign"]),
     ]
 
-    public static func parse(_ rawText: String) -> OneOffCommand? {
+    /// Bare pronouns ("read it", "read that") are only meaningful
+    /// with a noun already attached — a scoped request in flight or
+    /// a referent Dave just named. Without one they must not parse:
+    /// a pronoun in search of a referent is a refinement's job, not
+    /// a one-off's (PR #64 review).
+    private static let barePronouns: Set<String> = ["read it", "read that",
+                                                    "read this"]
+
+    public static func parse(_ rawText: String, referent: String? = nil) -> OneOffCommand? {
         var text = rawText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if text.hasPrefix("please ") { text = String(text.dropFirst("please ".count)) }
         if text.hasPrefix("dave, ") { text = String(text.dropFirst("dave, ".count)) }
         if text.hasPrefix("dave ") { text = String(text.dropFirst("dave ".count)) }
+        if referent != nil, barePronouns.contains(text) { return .readSign }
         for (command, phrases) in table where phrases.contains(text) {
             return command
         }

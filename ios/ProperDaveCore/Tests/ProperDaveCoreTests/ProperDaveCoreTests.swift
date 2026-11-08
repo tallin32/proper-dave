@@ -1838,6 +1838,11 @@ extension ProperDaveCoreTests {
         XCTAssertEqual(OneOffCommand.parse("what does that sign say?"), .readSign)
         XCTAssertEqual(OneOffCommand.parse("never mind"), .cancelScopedRequest)
         XCTAssertEqual(OneOffCommand.parse("forget it"), .cancelScopedRequest)
+        // Bare pronouns need a noun already attached (PR #64 review).
+        XCTAssertNil(OneOffCommand.parse("read it"))
+        XCTAssertNil(OneOffCommand.parse("read that"))
+        XCTAssertEqual(OneOffCommand.parse("read it", referent: "sign"), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("read that", referent: "sign"), .readSign)
         // Goal-shaped utterances must never parse as one-offs.
         XCTAssertNil(OneOffCommand.parse("watch for the stop sign"))
         XCTAssertNil(OneOffCommand.parse("tell me when you see a sign"))
