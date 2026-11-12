@@ -252,12 +252,7 @@ public enum OneOffCommand: Equatable, Sendable {
                                                     "read this"]
 
     public static func parse(_ rawText: String, referent: String? = nil) -> OneOffCommand? {
-        var text = rawText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.hasPrefix("please ") { text = String(text.dropFirst("please ".count)) }
-        if text.hasPrefix("dave, ") { text = String(text.dropFirst("dave, ".count)) }
-        if text.hasPrefix("dave ") { text = String(text.dropFirst("dave ".count)) }
+        let text = UtteranceNormalization.normalize(rawText)
         if referent != nil, barePronouns.contains(text) { return .readSign }
         for (command, phrases) in table where phrases.contains(text) {
             return command

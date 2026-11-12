@@ -1,5 +1,27 @@
 import Foundation
 
+/// Shared utterance normalization for every deterministic parser in
+/// the house (conversation commands, yes/no answers, one-offs —
+/// TRD-006/007): lowercase, trim sentence punctuation, strip a
+/// leading "please", and strip address-by-name. Addressing Dave as
+/// "Dave" or "Proper Dave" is a uniform rule, not a per-parser
+/// feature — users should never have to learn which parser is
+/// listening.
+enum UtteranceNormalization {
+    static func normalize(_ rawText: String) -> String {
+        var text = rawText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("please ") { text = String(text.dropFirst("please ".count)) }
+        for prefix in ["proper dave, ", "proper dave ", "dave, ", "dave "]
+        where text.hasPrefix(prefix) {
+            text = String(text.dropFirst(prefix.count))
+            break
+        }
+        return text
+    }
+}
+
 /// Deterministic conversation commands (TRD-006 control plane).
 ///
 /// Conversation turns that operate the *session* — status, stop,
@@ -57,10 +79,7 @@ public enum ConversationCommand: Equatable, Sendable {
     ]
 
     public static func parse(_ rawText: String) -> ConversationCommand? {
-        var text = rawText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.hasPrefix("please ") { text = String(text.dropFirst("please ".count)) }
+        let text = UtteranceNormalization.normalize(rawText)
         for (command, phrases) in table where phrases.contains(text) {
             return command
         }
@@ -118,10 +137,7 @@ public enum YesNoAnswer {
                                           "never mind", "nevermind", "not now"]
 
     public static func parse(_ rawText: String) -> Bool? {
-        var text = rawText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.hasPrefix("please ") { text = String(text.dropFirst("please ".count)) }
+        let text = UtteranceNormalization.normalize(rawText)
         if yes.contains(text) { return true }
         if no.contains(text) { return false }
         return nil
