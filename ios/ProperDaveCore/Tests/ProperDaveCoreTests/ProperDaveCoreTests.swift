@@ -782,6 +782,8 @@ extension ProperDaveCoreTests {
         XCTAssertTrue(session.lowLightOfferPending)
         XCTAssertEqual(YesNoAnswer.parse("yes"), true)
         XCTAssertEqual(YesNoAnswer.parse("Make it so."), true)
+        XCTAssertEqual(YesNoAnswer.parse("Dave, yes"), true)
+        XCTAssertEqual(YesNoAnswer.parse("Proper Dave, make it so"), true)
         XCTAssertEqual(YesNoAnswer.parse("No thanks."), false)
         XCTAssertNil(YesNoAnswer.parse("yes, and watch for the elevator"))
         XCTAssertNil(YesNoAnswer.parse("stop"))
@@ -1224,6 +1226,11 @@ extension ProperDaveCoreTests {
 
 extension ProperDaveCoreTests {
     func testConversationCommandParsing() {
+        // Address-by-name is a house rule across parsers.
+        XCTAssertEqual(ConversationCommand.parse("Dave, stop"), .stop)
+        XCTAssertEqual(ConversationCommand.parse("Proper Dave, what are you doing?"), .status)
+        XCTAssertEqual(ConversationCommand.parse("Proper Dave, speak faster"), .speakFaster)
+        XCTAssertNil(ConversationCommand.parse("Dave is watching the lobby"))
         XCTAssertEqual(ConversationCommand.parse("What are you doing?"), .status)
         XCTAssertEqual(ConversationCommand.parse("please stop"), .stop)
         XCTAssertEqual(ConversationCommand.parse("Stop watching."), .stop)
@@ -1835,6 +1842,9 @@ extension ProperDaveCoreTests {
     func testOneOffCommandParsing() {
         XCTAssertEqual(OneOffCommand.parse("Read that sign for me."), .readSign)
         XCTAssertEqual(OneOffCommand.parse("Dave, read the sign"), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("Proper Dave, read the sign"), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("Proper Dave, read that sign for me"), .readSign)
+        XCTAssertEqual(OneOffCommand.parse("please Proper Dave, never mind"), .cancelScopedRequest)
         XCTAssertEqual(OneOffCommand.parse("what does that sign say?"), .readSign)
         XCTAssertEqual(OneOffCommand.parse("never mind"), .cancelScopedRequest)
         XCTAssertEqual(OneOffCommand.parse("forget it"), .cancelScopedRequest)
